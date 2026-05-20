@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import type { DocDocument } from '@/types'
 import {
@@ -24,6 +25,10 @@ import {
   Moon,
   Omega,
   BookmarkIcon,
+  FileDown,
+  ChevronDown,
+  SpellCheck,
+  LayoutTemplate,
 } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { useTheme } from '@/lib/theme-context'
@@ -32,6 +37,8 @@ interface Props {
   state: DocDocument
   onTitleChange: (title: string) => void
   onExport: () => void
+  onExportPDF?: () => void
+  onExportDOCX?: () => void
   onPrint?: () => void
   onAI: () => void
   onDelete: () => void
@@ -47,16 +54,22 @@ interface Props {
   onFindReplace?: () => void
   onPageSettings?: () => void
   onReadingMode?: () => void
+  pageLayout?: boolean
+  onPageLayout?: () => void
   onOutline?: () => void
   onWatermark?: () => void
   onSpecialChars?: () => void
   onBookmarks?: () => void
+  onProofread?: () => void
+  onPdfImport?: () => void
 }
 
 export default function DocToolbar({
   state,
   onTitleChange,
   onExport,
+  onExportPDF,
+  onExportDOCX,
   onPrint,
   onAI,
   onDelete,
@@ -72,13 +85,31 @@ export default function DocToolbar({
   onFindReplace,
   onPageSettings,
   onReadingMode,
+  pageLayout,
+  onPageLayout,
   onOutline,
   onWatermark,
   onSpecialChars,
   onBookmarks,
+  onProofread,
+  onPdfImport,
 }: Props) {
   const commentCount = (state.comments || []).filter((c) => !c.resolved && !c.parentId).length
   const { theme, toggleTheme } = useTheme()
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false)
+      }
+    }
+    if (exportOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [exportOpen])
 
   return (
     <header className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2.5 border-b border-slate-800 bg-slate-950 no-print max-md:px-2">
@@ -210,6 +241,21 @@ export default function DocToolbar({
           </button>
         )}
 
+        {onPageLayout && (
+          <button
+            onClick={onPageLayout}
+            className={`w-7 h-7 flex items-center justify-center rounded border transition-colors ${
+              pageLayout
+                ? 'border-indigo-500 bg-indigo-600/20 text-indigo-400'
+                : 'border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white'
+            }`}
+            title="ページレイアウト"
+            aria-label="ページレイアウト"
+          >
+            <LayoutTemplate size={14} />
+          </button>
+        )}
+
         {onReadingMode && (
           <button
             onClick={onReadingMode}
@@ -283,16 +329,64 @@ export default function DocToolbar({
           <Sparkles size={13} /> <span className="max-md:hidden">{t('editor.aiGenerate').replace('✨ ', '')}</span>
         </button>
 
-        <button
-          onClick={onExport}
-          className="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-all active:scale-95"
-          title="HTMLエクスポート"
-        >
-          <span className="max-md:hidden">{t('editor.export')}</span>
-          <span className="md:hidden">
-            <Download size={14} />
-          </span>
-        </button>
+        {onPdfImport && (
+          <button
+            onClick={onPdfImport}
+            className="flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 hover:border-rose-500 bg-slate-800 hover:bg-rose-500/10 text-slate-300 hover:text-rose-400 text-xs transition-all active:scale-95"
+            title="PDFを読み込んでAI処理"
+          >
+            <FileDown size={13} /> <span className="max-md:hidden">PDF取込</span>
+          </button>
+        )}
+
+        {onProofread && (
+          <button
+            onClick={onProofread}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-indigo-500 bg-slate-800 hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-400 transition-colors"
+            title="AI文章校正"
+            aria-label="AI文章校正"
+          >
+            <SpellCheck size={14} />
+          </button>
+        )}
+
+        <div className="relative" ref={exportRef}>
+          <button
+            onClick={() => setExportOpen(!exportOpen)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-all active:scale-95"
+            title="エクスポート"
+          >
+            <FileDown size={14} />
+            <span className="max-md:hidden">{t('editor.export')}</span>
+            <ChevronDown size={12} />
+          </button>
+          {exportOpen && (
+            <div className="absolute right-0 top-full mt-1 w-40 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 py-1">
+              <button
+                onClick={() => { onExport(); setExportOpen(false) }}
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+              >
+                HTML (.html)
+              </button>
+              {onExportPDF && (
+                <button
+                  onClick={() => { onExportPDF(); setExportOpen(false) }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                >
+                  PDF (.pdf)
+                </button>
+              )}
+              {onExportDOCX && (
+                <button
+                  onClick={() => { onExportDOCX(); setExportOpen(false) }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                >
+                  Word (.docx)
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {onPrint && (
           <button

@@ -10,8 +10,10 @@ interface CellContextMenuProps {
   normalizedRange: SelectionRange | null
   activeSheet: Sheet
   clipboardRef: React.MutableRefObject<{ data: Record<string, Cell>; width: number; height: number } | null>
+  computedValues: Record<string, string | number>
   dispatch: React.Dispatch<any>
   onClose: () => void
+  onCut?: (range: SelectionRange) => void
 }
 
 function MenuItem({ label, onClick, danger = false }: { label: string; onClick: () => void; danger?: boolean }) {
@@ -36,8 +38,10 @@ export function CellContextMenu({
   normalizedRange,
   activeSheet,
   clipboardRef,
+  computedValues,
   dispatch,
   onClose,
+  onCut,
 }: CellContextMenuProps) {
   const { row, col } = selectedCell
   const sheetId = activeSheet.id
@@ -48,32 +52,77 @@ export function CellContextMenu({
 
   const isMergedCell = activeSheet.mergedCells?.some((mc) => mc.startRow === row && mc.startCol === col)
 
-  const handleCopy = () => {
-    if (!normalizedRange) {
-      onClose()
-      return
-    }
+  const copyRange = (range: SelectionRange) => {
     const data: Record<string, Cell> = {}
-    for (let r = normalizedRange.startRow; r <= normalizedRange.endRow; r++) {
-      for (let c = normalizedRange.startCol; c <= normalizedRange.endCol; c++) {
+    const tsvRows: string[] = []
+    for (let r = range.startRow; r <= range.endRow; r++) {
+      const rowVals: string[] = []
+      for (let c = range.startCol; c <= range.endCol; c++) {
         const key = `${r}-${c}`
         if (activeSheet.cells[key]) {
-          data[`${r - normalizedRange.startRow}-${c - normalizedRange.startCol}`] = { ...activeSheet.cells[key] }
+          data[`${r - range.startRow}-${c - range.startCol}`] = { ...activeSheet.cells[key] }
         }
+        const cv = computedValues[key]
+        rowVals.push(cv != null ? String(cv) : activeSheet.cells[key]?.value || '')
       }
+      tsvRows.push(rowVals.join('\t'))
     }
     clipboardRef.current = {
       data,
-      width: normalizedRange.endCol - normalizedRange.startCol + 1,
-      height: normalizedRange.endRow - normalizedRange.startRow + 1,
+      width: range.endCol - range.startCol + 1,
+      height: range.endRow - range.startRow + 1,
     }
+    try { navigator.clipboard.writeText(tsvRows.join('\n')) } catch {}
+  }
+
+  const handleCopy = () => {
+    if (!normalizedRange) { onClose(); return }
+    copyRange(normalizedRange)
+    onClose()
+  }
+
+  const handleCut = () => {
+    if (!normalizedRange) { onClose(); return }
+    copyRange(normalizedRange)
+    onCut?.(normalizedRange)
     onClose()
   }
 
   const handlePaste = () => {
-    if (clipboardRef.current) {
-      dispatch({ type: 'PASTE_CELLS', sheetId, startRow: row, startCol: col, data: clipboardRef.current.data })
-    }
+    // Try system clipboard first
+    navigator.clipboard.readText().then((text) => {
+      if (text && text.includes('\t')) {
+        const rows = text.split(/\r?\n/).filter((r) => r.length > 0)
+        const extData: Record<string, Cell> = {}
+        rows.forEach((rowStr, ri) => {
+          rowStr.split('\t').forEach((val, ci) => {
+            if (val) extData[`${ri}-${ci}`] = { value: val }
+          })
+        })
+        dispatch({ type: 'PASTE_CELLS', sheetId, startRow: row, startCol: col, data: extData })
+      } else if (clipboardRef.current) {
+        dispatch({ type: 'PASTE_CELLS', sheetId, startRow: row, startCol: col, data: clipboardRef.current.data })
+      } else if (text) {
+        dispatch({ type: 'SET_CELL_VALUE', sheetId, row, col, value: text.trim() })
+      }
+    }).catch(() => {
+      if (clipboardRef.current) {
+        dispatch({ type: 'PASTE_CELLS', sheetId, startRow: row, startCol: col, data: clipboardRef.current.data })
+      }
+    })
+    onClose()
+  }
+
+  const handleClear = () => {
+    if (!normalizedRange) { onClose(); return }
+    dispatch({
+      type: 'CLEAR_CELLS',
+      sheetId,
+      startRow: normalizedRange.startRow,
+      startCol: normalizedRange.startCol,
+      endRow: normalizedRange.endRow,
+      endCol: normalizedRange.endCol,
+    })
     onClose()
   }
 
@@ -84,8 +133,10 @@ export function CellContextMenu({
         className="fixed z-50 bg-slate-800 border border-slate-700 rounded-lg shadow-xl py-1 w-48 text-sm"
         style={{ left: x, top: y }}
       >
+        <MenuItem label="切り取り" onClick={handleCut} />
         <MenuItem label="コピー" onClick={handleCopy} />
         <MenuItem label="貼り付け" onClick={handlePaste} />
+        <MenuItem label="内容をクリア" onClick={handleClear} />
         <div className="border-t border-slate-700 my-1" />
         <MenuItem
           label="上に行を挿入"

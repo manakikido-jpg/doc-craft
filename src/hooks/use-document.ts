@@ -13,7 +13,7 @@ import type {
   Bookmark,
 } from '@/types'
 import { generateId } from '@/lib/utils'
-import { saveDocDoc } from '@/lib/document-store'
+import { saveDocDoc } from '@/lib/cloud-store'
 import { createUndoableReducer, initUndoable, type UndoableAction } from '@/lib/undoable'
 
 type DocAction =

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { DocDocument } from '@/types'
-import { getDocDoc } from '@/lib/document-store'
+import { getDocDoc } from '@/lib/cloud-store'
 import DocEditor from './doc-editor'
 import { ErrorBoundary } from '@/components/shared/error-boundary'
 
@@ -13,13 +13,14 @@ export default function DocEditorLoader({ id }: { id: string }) {
   const router = useRouter()
 
   useEffect(() => {
-    const d = getDocDoc(id)
-    if (!d) {
-      router.push('/dashboard')
-    } else {
-      setDoc(d)
-    }
-    setLoading(false)
+    getDocDoc(id).then((d) => {
+      if (!d) {
+        router.push('/dashboard')
+      } else {
+        setDoc(d)
+      }
+      setLoading(false)
+    })
   }, [id])
 
   if (loading || !doc) {

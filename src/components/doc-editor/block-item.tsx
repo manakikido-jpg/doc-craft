@@ -431,6 +431,7 @@ export default function BlockItem({
           width={block.data?.width}
           imageAlign={block.data?.imageAlign}
           caption={block.data?.caption}
+          wrapText={block.data?.wrapText as 'none' | 'left' | 'right' | undefined}
           onImageSet={(src, alt) => onUpdateData?.(block.id, { src, alt })}
           onUpdateProps={(data) => onUpdateData?.(block.id, data)}
         />

@@ -1,14 +1,17 @@
 import type {
   SlidesDocument,
   DocDocument,
+  SpreadsheetDocument,
   SlideElement,
   SlideTableElement,
   SlideConnectorElement,
   SlideShapeElement,
   SlideVideoElement,
   SlideChartElement,
+  CellFormat,
 } from '@/types'
 import { SLIDE_THEMES } from './themes'
+import { evaluateCell, colIndexToLetter, formatCellValue } from './formula-engine'
 
 const CHART_COLORS = ['#6366f1', '#f97316', '#22c55e', '#eab308', '#ec4899', '#06b6d4', '#8b5cf6', '#ef4444']
 
@@ -488,6 +491,149 @@ export function downloadFile(content: string, filename: string, type = 'text/htm
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+export function exportDocToPDF(doc: DocDocument): void {
+  const html = exportDocToHTML(doc)
+  const win = window.open('', '_blank')
+  if (!win) {
+    alert('ポップアップがブロックされました。ブラウザの設定を確認してください。')
+    return
+  }
+  win.document.write(html)
+  win.document.close()
+  win.onload = () => {
+    win.print()
+  }
+}
+
+export function exportSlidesToPDF(doc: SlidesDocument): void {
+  const html = exportSlidesToHTML(doc)
+  const win = window.open('', '_blank')
+  if (!win) {
+    alert('ポップアップがブロックされました。ブラウザの設定を確認してください。')
+    return
+  }
+  win.document.write(html)
+  win.document.close()
+  win.onload = () => {
+    win.print()
+  }
+}
+
+export function exportSpreadsheetToHTML(doc: SpreadsheetDocument): string {
+  const sheets = doc.sheets
+    .map((sheet) => {
+      const computed: Record<string, string | number> = {}
+      for (const key of Object.keys(sheet.cells)) {
+        computed[key] = evaluateCell(key, sheet.cells)
+      }
+
+      // Find used range
+      let maxRow = 0
+      let maxCol = 0
+      for (const key of Object.keys(sheet.cells)) {
+        const [r, c] = key.split('-').map(Number)
+        if (r > maxRow) maxRow = r
+        if (c > maxCol) maxCol = c
+      }
+
+      // Build header row
+      let headerCols = '<th style="background:#1e293b;color:#94a3b8;padding:6px 12px;border:1px solid #334155;font-weight:600;min-width:40px"></th>'
+      for (let c = 0; c <= maxCol; c++) {
+        const w = sheet.colWidths[c] || 100
+        headerCols += `<th style="background:#1e293b;color:#94a3b8;padding:6px 12px;border:1px solid #334155;font-weight:600;min-width:${w}px;width:${w}px">${colIndexToLetter(c)}</th>`
+      }
+
+      // Check if cell is hidden by merge
+      const isMergeHidden = (row: number, col: number) =>
+        sheet.mergedCells.some((m) => {
+          if (row === m.startRow && col === m.startCol) return false
+          return row >= m.startRow && row < m.startRow + m.rowSpan && col >= m.startCol && col < m.startCol + m.colSpan
+        })
+      const getMerge = (row: number, col: number) =>
+        sheet.mergedCells.find((m) => m.startRow === row && m.startCol === col)
+
+      // Build data rows
+      let rows = ''
+      for (let r = 0; r <= maxRow; r++) {
+        let cells = `<td style="background:#1e293b;color:#94a3b8;padding:4px 8px;border:1px solid #334155;font-weight:600;text-align:center">${r + 1}</td>`
+        for (let c = 0; c <= maxCol; c++) {
+          if (isMergeHidden(r, c)) continue
+          const key = `${r}-${c}`
+          const cell = sheet.cells[key]
+          const val = computed[key]
+          const fmt = cell?.format || ({} as CellFormat)
+          const merge = getMerge(r, c)
+
+          // Build cell styles
+          const styles: string[] = ['padding:4px 8px', 'border:1px solid #334155']
+          if (fmt.bold) styles.push('font-weight:bold')
+          if (fmt.italic) styles.push('font-style:italic')
+          if (fmt.underline) styles.push('text-decoration:underline')
+          if (fmt.strikethrough) styles.push('text-decoration:line-through')
+          if (fmt.textColor) styles.push(`color:${fmt.textColor}`)
+          if (fmt.bgColor) styles.push(`background:${fmt.bgColor}`)
+          if (fmt.fontSize) styles.push(`font-size:${fmt.fontSize}px`)
+          if (fmt.align) styles.push(`text-align:${fmt.align}`)
+          if (fmt.verticalAlign) styles.push(`vertical-align:${fmt.verticalAlign}`)
+          if (fmt.wrap) styles.push('white-space:pre-wrap;word-wrap:break-word')
+          if (fmt.borderTop) styles.push(`border-top:${fmt.borderTop}`)
+          if (fmt.borderRight) styles.push(`border-right:${fmt.borderRight}`)
+          if (fmt.borderBottom) styles.push(`border-bottom:${fmt.borderBottom}`)
+          if (fmt.borderLeft) styles.push(`border-left:${fmt.borderLeft}`)
+
+          const displayVal = val !== undefined && val !== '' ? formatCellValue(val, fmt) : ''
+          const spanAttr = merge
+            ? `${merge.rowSpan > 1 ? ` rowspan="${merge.rowSpan}"` : ''}${merge.colSpan > 1 ? ` colspan="${merge.colSpan}"` : ''}`
+            : ''
+          cells += `<td${spanAttr} style="${styles.join(';')}">${escapeHtml(String(displayVal))}</td>`
+        }
+        rows += `<tr>${cells}</tr>`
+      }
+
+      return `<h2 style="color:#e2e8f0;font-size:16px;margin:24px 0 8px">${escapeHtml(sheet.name)}</h2>
+<table style="border-collapse:collapse;font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#e2e8f0">
+<thead><tr>${headerCols}</tr></thead>
+<tbody>${rows}</tbody>
+</table>`
+    })
+    .join('\n')
+
+  return `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>${escapeHtml(doc.meta.title)}</title>
+<style>
+  body { margin:0; padding:20px; background:#0f172a; font-family:system-ui,-apple-system,sans-serif }
+  table { border-collapse:collapse }
+  @media print {
+    body { background:white; color:#1e293b; padding:10px }
+    h2 { color:#1e293b !important }
+    table { color:#1e293b !important }
+    td, th { border-color:#cbd5e1 !important; color:#1e293b !important; background:white !important }
+    td[style*="background"] { print-color-adjust:exact; -webkit-print-color-adjust:exact }
+  }
+  @page { size:landscape; margin:10mm }
+</style>
+</head><body>
+<h1 style="color:#f1f5f9;font-size:20px;margin-bottom:16px">${escapeHtml(doc.meta.title)}</h1>
+${sheets}
+</body></html>`
+}
+
+export function exportSpreadsheetToPDF(doc: SpreadsheetDocument): void {
+  const html = exportSpreadsheetToHTML(doc)
+  const win = window.open('', '_blank')
+  if (!win) {
+    alert('ポップアップがブロックされました。ブラウザの設定を確認してください。')
+    return
+  }
+  win.document.write(html)
+  win.document.close()
+  win.onload = () => {
+    win.print()
+  }
 }
 
 function escapeHtml(str: string): string {

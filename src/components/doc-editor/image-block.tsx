@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState, useCallback } from 'react'
-import { ImageIcon, Maximize2, AlignLeft, AlignCenter, AlignRight } from 'lucide-react'
+import { ImageIcon, Maximize2, AlignLeft, AlignCenter, AlignRight, Rows3 } from 'lucide-react'
 import { fileToDataURL, isStorageNearLimit } from '@/lib/image-utils'
 
 interface Props {
@@ -10,11 +10,12 @@ interface Props {
   width?: string
   imageAlign?: string
   caption?: string
+  wrapText?: 'none' | 'left' | 'right'
   onImageSet: (src: string, alt: string) => void
   onUpdateProps?: (data: Record<string, string>) => void
 }
 
-export default function ImageBlock({ src, alt, width, imageAlign, caption, onImageSet, onUpdateProps }: Props) {
+export default function ImageBlock({ src, alt, width, imageAlign, caption, wrapText, onImageSet, onUpdateProps }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -77,13 +78,22 @@ export default function ImageBlock({ src, alt, width, imageAlign, caption, onIma
   )
 
   const currentAlign = imageAlign || 'left'
+  const currentWrap = wrapText || 'none'
 
   if (src) {
+    const wrapStyle: React.CSSProperties =
+      currentWrap === 'left'
+        ? { float: 'left', marginRight: '1rem', marginBottom: '0.5rem' }
+        : currentWrap === 'right'
+          ? { float: 'right', marginLeft: '1rem', marginBottom: '0.5rem' }
+          : {}
+
     return (
       <div
-        className={`my-3 group relative ${currentAlign === 'center' ? 'flex flex-col items-center' : currentAlign === 'right' ? 'flex flex-col items-end' : ''}`}
+        className={`my-3 group relative ${currentWrap !== 'none' ? '' : currentAlign === 'center' ? 'flex flex-col items-center' : currentAlign === 'right' ? 'flex flex-col items-end' : ''}`}
+        style={currentWrap !== 'none' ? { overflow: 'hidden' } : undefined}
       >
-        <div className="relative inline-block">
+        <div className="relative inline-block" style={wrapStyle}>
           <img
             ref={imgRef}
             src={src}
@@ -121,6 +131,21 @@ export default function ImageBlock({ src, alt, width, imageAlign, caption, onIma
               title="右揃え"
             >
               <AlignRight size={12} />
+            </button>
+            <div className="w-px h-4 bg-slate-600 mx-0.5" />
+            <button
+              onClick={() => onUpdateProps?.({ wrapText: currentWrap === 'left' ? 'none' : 'left' })}
+              className={`p-1 rounded ${currentWrap === 'left' ? 'bg-indigo-500/30' : 'bg-slate-800/80'} text-slate-300 text-xs backdrop-blur-sm hover:bg-slate-700`}
+              title="テキスト回り込み（左）"
+            >
+              <Rows3 size={12} style={{ transform: 'scaleX(-1)' }} />
+            </button>
+            <button
+              onClick={() => onUpdateProps?.({ wrapText: currentWrap === 'right' ? 'none' : 'right' })}
+              className={`p-1 rounded ${currentWrap === 'right' ? 'bg-indigo-500/30' : 'bg-slate-800/80'} text-slate-300 text-xs backdrop-blur-sm hover:bg-slate-700`}
+              title="テキスト回り込み（右）"
+            >
+              <Rows3 size={12} />
             </button>
             <button
               onClick={() => fileRef.current?.click()}

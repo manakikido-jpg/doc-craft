@@ -47,7 +47,7 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
   const [showGrid, setShowGrid] = useState(false)
   const [snapToGrid, setSnapToGrid] = useState(false)
   const [gridSize] = useState(5)
-  const [smartGuides, setSmartGuides] = useState<{ x?: number; y?: number }[]>([])
+  const [smartGuides, setSmartGuides] = useState<{ x?: number; y?: number; type?: 'edge' | 'center' | 'spacing' }[]>([])
   const [propertiesPanel, setPropertiesPanel] = useState(false)
   const [imageFiltersPanel, setImageFiltersPanel] = useState(false)
   const [chartEditorPanel, setChartEditorPanel] = useState(false)
@@ -94,6 +94,18 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
           })
           dispatch({ type: 'PASTE_ELEMENTS', slideId: slide.id, elements: pasted })
           setSelectedIds(new Set(pasted.map((el) => el.id)))
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+        e.preventDefault()
+        if (selectedIds.size > 0) {
+          const toDup = slide.elements.filter((el) => selectedIds.has(el.id))
+          const duped = toDup.map((el) => {
+            if (el.type === 'connector') return { ...el, id: generateId() }
+            return { ...el, id: generateId(), x: el.x + 2, y: el.y + 2 }
+          })
+          dispatch({ type: 'PASTE_ELEMENTS', slideId: slide.id, elements: duped })
+          setSelectedIds(new Set(duped.map((el) => el.id)))
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
@@ -218,16 +230,28 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
   function computeSmartGuides(
     movingIds: string[],
     newPositions: { elementId: string; x: number; y: number }[],
-  ): { x?: number; y?: number }[] {
-    const guides: { x?: number; y?: number }[] = []
+  ): {
+    guides: { x?: number; y?: number; type?: 'edge' | 'center' | 'spacing' }[]
+    snapDx: number
+    snapDy: number
+  } {
+    const guides: { x?: number; y?: number; type?: 'edge' | 'center' | 'spacing' }[] = []
     const others = slide.elements.filter((el) => !movingIds.includes(el.id) && el.type !== 'connector')
     const threshold = 1
+    let snapDx = 0
+    let snapDy = 0
+    let snappedX = false
+    let snappedY = false
 
     for (const pos of newPositions) {
       const moving = slide.elements.find((e) => e.id === pos.elementId)
       if (!moving || moving.type === 'connector') continue
       const mw = moving.w ?? 0
       const mh = 'h' in moving ? (moving.h ?? 0) : 0
+      const mLeft = pos.x
+      const mRight = pos.x + mw
+      const mTop = pos.y
+      const mBottom = pos.y + mh
       const mCx = pos.x + mw / 2
       const mCy = pos.y + mh / 2
 
@@ -235,16 +259,79 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
         if (other.type === 'connector') continue
         const ow = other.w ?? 0
         const oh = 'h' in other ? ((other as any).h ?? 0) : 0
+        const oLeft = other.x
+        const oRight = other.x + ow
+        const oTop = other.y
         const oCx = other.x + ow / 2
         const oCy = other.y + oh / 2
+        const oBottom = other.y + oh
 
-        if (Math.abs(mCx - oCx) < threshold) guides.push({ x: oCx })
-        if (Math.abs(mCy - oCy) < threshold) guides.push({ y: oCy })
-        if (Math.abs(pos.x - other.x) < threshold) guides.push({ x: other.x })
-        if (Math.abs(pos.y - other.y) < threshold) guides.push({ y: other.y })
+        // Vertical guides (x-axis alignment)
+        const xChecks = [
+          { mv: mLeft, ov: oLeft, type: 'edge' as const },
+          { mv: mRight, ov: oRight, type: 'edge' as const },
+          { mv: mLeft, ov: oRight, type: 'edge' as const },
+          { mv: mRight, ov: oLeft, type: 'edge' as const },
+          { mv: mCx, ov: oCx, type: 'center' as const },
+        ]
+        for (const chk of xChecks) {
+          const diff = chk.ov - chk.mv
+          if (Math.abs(diff) < threshold) {
+            guides.push({ x: chk.ov, type: chk.type })
+            if (!snappedX) { snapDx = diff; snappedX = true }
+          }
+        }
+
+        // Horizontal guides (y-axis alignment)
+        const yChecks = [
+          { mv: mTop, ov: oTop, type: 'edge' as const },
+          { mv: mBottom, ov: oBottom, type: 'edge' as const },
+          { mv: mTop, ov: oBottom, type: 'edge' as const },
+          { mv: mBottom, ov: oTop, type: 'edge' as const },
+          { mv: mCy, ov: oCy, type: 'center' as const },
+        ]
+        for (const chk of yChecks) {
+          const diff = chk.ov - chk.mv
+          if (Math.abs(diff) < threshold) {
+            guides.push({ y: chk.ov, type: chk.type })
+            if (!snappedY) { snapDy = diff; snappedY = true }
+          }
+        }
+      }
+
+      // Equal spacing guides (check gaps between sorted elements)
+      if (others.length >= 2) {
+        const otherBoxes = others.map((o) => ({
+          x: (o as any).x ?? 0,
+          w: (o as any).w ?? 0,
+        }))
+        otherBoxes.sort((a, b) => a.x - b.x)
+        for (let i = 0; i < otherBoxes.length - 1; i++) {
+          const a = otherBoxes[i]
+          const b = otherBoxes[i + 1]
+          const gap = b.x - (a.x + a.w)
+          const gapBeforeMoving = mLeft - (a.x + a.w)
+          const gapAfterMoving = b.x - mRight
+          if (gap > 0 && Math.abs(gapBeforeMoving - gap) < threshold) {
+            guides.push({ x: a.x + a.w + gap, type: 'spacing' })
+          }
+          if (gap > 0 && Math.abs(gapAfterMoving - gap) < threshold) {
+            guides.push({ x: b.x + b.w + gap, type: 'spacing' })
+          }
+        }
       }
     }
-    return guides
+
+    // Deduplicate guides
+    const seen = new Set<string>()
+    const unique = guides.filter((g) => {
+      const key = `${g.x ?? ''}_${g.y ?? ''}_${g.type ?? ''}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+    return { guides: unique, snapDx, snapDy }
   }
 
   function handleMouseMove(e: React.MouseEvent) {
@@ -254,17 +341,24 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
       const rect = canvasRef.current.getBoundingClientRect()
       const dx = ((e.clientX - dragStart.mx) / rect.width) * 100
       const dy = ((e.clientY - dragStart.my) / rect.height) * 100
-      const moves = dragStart.positions.map((p) => ({
+      let moves = dragStart.positions.map((p) => ({
         elementId: p.id,
         x: snapValue(Math.max(0, Math.min(90, p.x + dx))),
         y: snapValue(Math.max(0, Math.min(90, p.y + dy))),
       }))
-      setSmartGuides(
-        computeSmartGuides(
-          moves.map((m) => m.elementId),
-          moves,
-        ),
+      const { guides, snapDx, snapDy } = computeSmartGuides(
+        moves.map((m) => m.elementId),
+        moves,
       )
+      // Apply smart guide snapping
+      if (snapDx !== 0 || snapDy !== 0) {
+        moves = moves.map((m) => ({
+          ...m,
+          x: Math.max(0, Math.min(90, m.x + snapDx)),
+          y: Math.max(0, Math.min(90, m.y + snapDy)),
+        }))
+      }
+      setSmartGuides(guides)
       dispatch({ type: 'UPDATE_ELEMENTS_POSITION', slideId: slide.id, moves })
       return
     }
@@ -1064,13 +1158,13 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
               {Array.from({ length: Math.floor(100 / gridSize) - 1 }, (_, i) => {
                 const pos = (i + 1) * gridSize
                 return (
-                  <g key={i}>
+                  <g key={`line-${i}`}>
                     <line
                       x1={`${pos}%`}
                       y1="0"
                       x2={`${pos}%`}
                       y2="100%"
-                      stroke="rgba(99,102,241,0.15)"
+                      stroke="rgba(99,102,241,0.12)"
                       strokeWidth="0.5"
                     />
                     <line
@@ -1078,11 +1172,27 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
                       y1={`${pos}%`}
                       x2="100%"
                       y2={`${pos}%`}
-                      stroke="rgba(99,102,241,0.15)"
+                      stroke="rgba(99,102,241,0.12)"
                       strokeWidth="0.5"
                     />
                   </g>
                 )
+              })}
+              {/* Grid dots at intersections */}
+              {Array.from({ length: Math.floor(100 / gridSize) - 1 }, (_, i) => {
+                const px = (i + 1) * gridSize
+                return Array.from({ length: Math.floor(100 / gridSize) - 1 }, (_, j) => {
+                  const py = (j + 1) * gridSize
+                  return (
+                    <circle
+                      key={`dot-${i}-${j}`}
+                      cx={`${px}%`}
+                      cy={`${py}%`}
+                      r="1"
+                      fill="rgba(99,102,241,0.3)"
+                    />
+                  )
+                })
               })}
             </svg>
           )}
@@ -1090,38 +1200,42 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
           {sortedElements.map(renderElement)}
 
           {/* Smart guides */}
-          {smartGuides.map((g, i) => (
-            <div key={i}>
-              {g.x !== undefined && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: `${g.x}%`,
-                    top: 0,
-                    width: '1px',
-                    height: '100%',
-                    background: '#f97316',
-                    pointerEvents: 'none',
-                    zIndex: 99998,
-                  }}
-                />
-              )}
-              {g.y !== undefined && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: `${g.y}%`,
-                    width: '100%',
-                    height: '1px',
-                    background: '#f97316',
-                    pointerEvents: 'none',
-                    zIndex: 99998,
-                  }}
-                />
-              )}
-            </div>
-          ))}
+          {smartGuides.length > 0 && (
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              style={{ zIndex: 99998 }}
+            >
+              {smartGuides.map((g, i) => {
+                const color = g.type === 'center' ? '#3b82f6' : g.type === 'spacing' ? '#10b981' : '#ef4444'
+                return (
+                  <g key={i}>
+                    {g.x !== undefined && (
+                      <line
+                        x1={`${g.x}%`}
+                        y1="0"
+                        x2={`${g.x}%`}
+                        y2="100%"
+                        stroke={color}
+                        strokeWidth="1"
+                        strokeDasharray="4,3"
+                      />
+                    )}
+                    {g.y !== undefined && (
+                      <line
+                        x1="0"
+                        y1={`${g.y}%`}
+                        x2="100%"
+                        y2={`${g.y}%`}
+                        stroke={color}
+                        strokeWidth="1"
+                        strokeDasharray="4,3"
+                      />
+                    )}
+                  </g>
+                )
+              })}
+            </svg>
+          )}
 
           {/* Rubber band selection */}
           {rubberBand && (

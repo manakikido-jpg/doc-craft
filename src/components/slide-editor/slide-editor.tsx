@@ -4,13 +4,15 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { SlidesDocument } from '@/types'
 import { useSlides } from '@/hooks/use-slides'
-import { deleteDocument } from '@/lib/document-store'
-import { exportSlidesToHTML, downloadFile } from '@/lib/export-utils'
+import { deleteDocument } from '@/lib/cloud-store'
+import { exportSlidesToHTML, exportSlidesToPDF, downloadFile } from '@/lib/export-utils'
+import { exportSlidesToPPTX } from '@/lib/pptx-export'
 import { autoLayout } from '@/lib/auto-layout'
 import SlideToolbar from './slide-toolbar'
 import SlidePanel from './slide-panel'
 import SlideCanvas from './slide-canvas'
 import PresentationMode from './presentation-mode'
+import PresenterView from './presenter-view'
 import NotesPanel from './notes-panel'
 import CommentPanel from '../shared/comment-panel'
 import ShortcutsHelp from '../shared/shortcuts-help'
@@ -19,6 +21,9 @@ import VersionPanel from '../shared/version-panel'
 import SlideSorter from './slide-sorter'
 import AnimationPanel from './animation-panel'
 import SlideFooterSettings from './slide-footer-settings'
+import SlideLayoutPanel from './slide-layout-panel'
+import PdfAiPanel from '../shared/pdf-ai-panel'
+import { generateId } from '@/lib/utils'
 
 interface Props {
   initialDoc: SlidesDocument
@@ -27,6 +32,7 @@ interface Props {
 export default function SlideEditor({ initialDoc }: Props) {
   const { state, dispatch, canUndo, canRedo } = useSlides()
   const [presenting, setPresenting] = useState(false)
+  const [presenterViewOpen, setPresenterViewOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -35,6 +41,8 @@ export default function SlideEditor({ initialDoc }: Props) {
   const [sorterOpen, setSorterOpen] = useState(false)
   const [animPanelOpen, setAnimPanelOpen] = useState(false)
   const [footerSettingsOpen, setFooterSettingsOpen] = useState(false)
+  const [layoutPanelOpen, setLayoutPanelOpen] = useState(false)
+  const [pdfAiOpen, setPdfAiOpen] = useState(false)
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([])
   const router = useRouter()
 
@@ -72,6 +80,14 @@ export default function SlideEditor({ initialDoc }: Props) {
     downloadFile(html, `${state.meta.title || 'presentation'}.html`)
   }
 
+  function handleExportPDF() {
+    exportSlidesToPDF(state)
+  }
+
+  async function handleExportPPTX() {
+    await exportSlidesToPPTX(state)
+  }
+
   function handlePrint() {
     const prevTitle = document.title
     document.title = state.meta.title || 'presentation'
@@ -79,12 +95,12 @@ export default function SlideEditor({ initialDoc }: Props) {
     document.title = prevTitle
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (
       !window.confirm(`「${state.meta.title || '無題のプレゼンテーション'}」を削除しますか？この操作は取り消せません。`)
     )
       return
-    deleteDocument(state.meta.id)
+    await deleteDocument(state.meta.id)
     router.push('/dashboard')
   }
 
@@ -98,9 +114,12 @@ export default function SlideEditor({ initialDoc }: Props) {
         state={state}
         dispatch={dispatch}
         onExport={handleExport}
+        onExportPDF={handleExportPDF}
+        onExportPPTX={handleExportPPTX}
         onPrint={handlePrint}
         onDelete={handleDelete}
         onPresent={() => setPresenting(true)}
+        onPresenterView={() => setPresenterViewOpen(true)}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={() => dispatch({ type: 'UNDO' })}
@@ -113,6 +132,8 @@ export default function SlideEditor({ initialDoc }: Props) {
         onSorterView={() => setSorterOpen(true)}
         onAnimationPanel={() => setAnimPanelOpen(!animPanelOpen)}
         onFooterSettings={() => setFooterSettingsOpen(!footerSettingsOpen)}
+        onSlideLayout={() => setLayoutPanelOpen(true)}
+        onPdfImport={() => setPdfAiOpen(true)}
         onAutoLayout={() => {
           if (activeSlide) {
             const laid = autoLayout(activeSlide)
@@ -182,6 +203,18 @@ export default function SlideEditor({ initialDoc }: Props) {
         />
       )}
 
+      {presenterViewOpen && (
+        <PresenterView
+          slides={state.slides}
+          startIndex={Math.max(
+            0,
+            state.slides.findIndex((s) => s.id === state.activeSlideId),
+          )}
+          onExit={() => setPresenterViewOpen(false)}
+          globalFooter={state.globalFooter}
+        />
+      )}
+
       {sorterOpen && <SlideSorter state={state} dispatch={dispatch} onClose={() => setSorterOpen(false)} />}
 
       <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} context="slides" />
@@ -200,6 +233,61 @@ export default function SlideEditor({ initialDoc }: Props) {
           onClose={() => setFooterSettingsOpen(false)}
         />
       )}
+      {layoutPanelOpen && activeSlide && (
+        <SlideLayoutPanel
+          themeKey={activeSlide.themeKey}
+          onApplyLayout={(elements) => {
+            dispatch({
+              type: 'SET_SLIDE_ELEMENTS',
+              slideId: activeSlide.id,
+              elements,
+            })
+          }}
+          onClose={() => setLayoutPanelOpen(false)}
+        />
+      )}
+      <PdfAiPanel
+        open={pdfAiOpen}
+        onClose={() => setPdfAiOpen(false)}
+        context="slides"
+        onInsertSlides={(slides, docTitle) => {
+          dispatch({ type: 'SET_TITLE', title: docTitle })
+          slides.forEach((slideData, i) => {
+            dispatch({ type: 'ADD_SLIDE' })
+            // After adding, the new slide becomes active — set elements on it
+            setTimeout(() => {
+              const lastSlide = state.slides[state.slides.length - 1]
+              if (!lastSlide) return
+              const elements: import('@/types').SlideElement[] = [
+                {
+                  id: generateId(),
+                  type: 'title' as const,
+                  content: slideData.title,
+                  x: 5, y: 5, w: 90, h: 15,
+                  fontSize: 32, fontWeight: '700' as const, align: 'left' as const,
+                  color: '#ffffff',
+                },
+                ...slideData.bullets.map((bullet, bi) => ({
+                  id: generateId(),
+                  type: 'body' as const,
+                  content: `• ${bullet}`,
+                  x: 5, y: 25 + bi * 10, w: 90, h: 8,
+                  fontSize: 18, fontWeight: '400' as const, align: 'left' as const,
+                  color: '#e2e8f0',
+                })),
+              ]
+              dispatch({
+                type: 'SET_SLIDE_ELEMENTS',
+                slideId: lastSlide.id,
+                elements,
+              })
+              if (slideData.themeKey) {
+                dispatch({ type: 'SET_THEME', slideId: lastSlide.id, themeKey: slideData.themeKey as any })
+              }
+            }, 100 * (i + 1))
+          })
+        }}
+      />
     </div>
   )
 }

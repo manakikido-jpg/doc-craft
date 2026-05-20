@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { SlidesDocument } from '@/types'
-import { getSlideDoc } from '@/lib/document-store'
+import { getSlideDoc } from '@/lib/cloud-store'
 import SlideEditor from './slide-editor'
 import { ErrorBoundary } from '@/components/shared/error-boundary'
 
@@ -13,13 +13,14 @@ export default function SlideEditorLoader({ id }: { id: string }) {
   const router = useRouter()
 
   useEffect(() => {
-    const d = getSlideDoc(id)
-    if (!d) {
-      router.push('/dashboard')
-    } else {
-      setDoc(d)
-    }
-    setLoading(false)
+    getSlideDoc(id).then((d) => {
+      if (!d) {
+        router.push('/dashboard')
+      } else {
+        setDoc(d)
+      }
+      setLoading(false)
+    })
   }, [id])
 
   if (loading || !doc) {

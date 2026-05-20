@@ -7,6 +7,8 @@ import {
   AlignStartHorizontal,
   AlignCenterHorizontal,
   AlignEndHorizontal,
+  AlignHorizontalDistributeCenter,
+  AlignVerticalDistributeCenter,
 } from 'lucide-react'
 import type { SlideElement } from '@/types'
 
@@ -70,6 +72,38 @@ export default function AlignmentToolbar({ elements, selectedIds, onUpdatePositi
     })
   }
 
+  function distributeH() {
+    if (selected.length < 3) return
+    const boxes = selected.map((e) => ({ id: e.id, ...getBox(e) }))
+    boxes.sort((a, b) => a.x - b.x)
+    const first = boxes[0]
+    const last = boxes[boxes.length - 1]
+    const totalWidth = boxes.reduce((sum, b) => sum + b.w, 0)
+    const totalSpace = last.x + last.w - first.x - totalWidth
+    const gap = totalSpace / (boxes.length - 1)
+    let currentX = first.x + first.w + gap
+    for (let i = 1; i < boxes.length - 1; i++) {
+      onUpdatePosition(boxes[i].id, currentX, boxes[i].y)
+      currentX += boxes[i].w + gap
+    }
+  }
+
+  function distributeV() {
+    if (selected.length < 3) return
+    const boxes = selected.map((e) => ({ id: e.id, ...getBox(e) }))
+    boxes.sort((a, b) => a.y - b.y)
+    const first = boxes[0]
+    const last = boxes[boxes.length - 1]
+    const totalHeight = boxes.reduce((sum, b) => sum + b.h, 0)
+    const totalSpace = last.y + last.h - first.y - totalHeight
+    const gap = totalSpace / (boxes.length - 1)
+    let currentY = first.y + first.h + gap
+    for (let i = 1; i < boxes.length - 1; i++) {
+      onUpdatePosition(boxes[i].id, boxes[i].x, currentY)
+      currentY += boxes[i].h + gap
+    }
+  }
+
   const btn =
     'w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors'
 
@@ -94,6 +128,17 @@ export default function AlignmentToolbar({ elements, selectedIds, onUpdatePositi
       <button className={btn} onClick={alignBottom} title="下揃え">
         <AlignEndHorizontal size={14} />
       </button>
+      {selected.length >= 3 && (
+        <>
+          <div className="w-px h-4 bg-slate-600 mx-0.5" />
+          <button className={btn} onClick={distributeH} title="水平に均等配置">
+            <AlignHorizontalDistributeCenter size={14} />
+          </button>
+          <button className={btn} onClick={distributeV} title="垂直に均等配置">
+            <AlignVerticalDistributeCenter size={14} />
+          </button>
+        </>
+      )}
     </div>
   )
 }

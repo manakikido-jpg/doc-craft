@@ -20,7 +20,7 @@ import type {
 } from '@/types'
 import { generateId } from '@/lib/utils'
 import { SLIDE_TEMPLATES } from '@/lib/templates'
-import { saveSlideDoc } from '@/lib/document-store'
+import { saveSlideDoc } from '@/lib/cloud-store'
 import { createUndoableReducer, initUndoable, type UndoableAction } from '@/lib/undoable'
 
 type SlideAction =
@@ -98,6 +98,7 @@ type SlideAction =
   // Phase 5: Master slides
   | { type: 'ADD_MASTER'; master: SlideMaster }
   | { type: 'SET_SLIDE_MASTER'; slideId: string; masterId?: string }
+  | { type: 'SET_SLIDE_ELEMENTS'; slideId: string; elements: SlideElement[] }
 
 export type { SlideAction }
 
@@ -602,6 +603,8 @@ function slidesReducer(state: SlidesDocument, action: SlideAction): SlidesDocume
       return { ...state, masters: [...(state.masters || []), action.master] }
     case 'SET_SLIDE_MASTER':
       return updateSlide(state, action.slideId, (s) => ({ ...s, masterId: action.masterId }))
+    case 'SET_SLIDE_ELEMENTS':
+      return updateSlide(state, action.slideId, (s) => ({ ...s, elements: action.elements }))
 
     default:
       return state

@@ -1,9 +1,9 @@
 'use client'
 
 import { useReducer, useEffect, useRef, useCallback } from 'react'
-import type { SpreadsheetDocument, Sheet, Cell, CellFormat, MergedCellRange, ConditionalFormat } from '@/types'
+import type { SpreadsheetDocument, Sheet, Cell, CellFormat, MergedCellRange, ConditionalFormat, DataValidation } from '@/types'
 import { generateId } from '@/lib/utils'
-import { saveSpreadsheetDoc } from '@/lib/document-store'
+import { saveSpreadsheetDoc } from '@/lib/cloud-store'
 import { createUndoableReducer, initUndoable, type UndoableAction } from '@/lib/undoable'
 
 type SpreadsheetAction =
@@ -54,6 +54,9 @@ type SpreadsheetAction =
   | { type: 'FILL_RIGHT'; sheetId: string; startRow: number; startCol: number; endRow: number; endCol: number }
   // Clear Formatting
   | { type: 'CLEAR_FORMAT'; sheetId: string; startRow: number; startCol: number; endRow: number; endCol: number }
+  // Data Validation
+  | { type: 'SET_DATA_VALIDATION'; sheetId: string; startRow: number; startCol: number; endRow: number; endCol: number; validation: DataValidation }
+  | { type: 'REMOVE_DATA_VALIDATION'; sheetId: string; startRow: number; startCol: number; endRow: number; endCol: number }
 
 export type { SpreadsheetAction }
 
@@ -465,6 +468,32 @@ function spreadsheetReducer(state: SpreadsheetDocument, action: SpreadsheetActio
           }
         }
         return { ...s, cells: newCells }
+      })
+    }
+
+    // ── Data Validation ──
+
+    case 'SET_DATA_VALIDATION': {
+      return updateSheet(state, action.sheetId, (s) => {
+        const dv = { ...(s.dataValidation ?? {}) }
+        for (let r = action.startRow; r <= action.endRow; r++) {
+          for (let c = action.startCol; c <= action.endCol; c++) {
+            dv[`${r}-${c}`] = { ...action.validation }
+          }
+        }
+        return { ...s, dataValidation: dv }
+      })
+    }
+
+    case 'REMOVE_DATA_VALIDATION': {
+      return updateSheet(state, action.sheetId, (s) => {
+        const dv = { ...(s.dataValidation ?? {}) }
+        for (let r = action.startRow; r <= action.endRow; r++) {
+          for (let c = action.startCol; c <= action.endCol; c++) {
+            delete dv[`${r}-${c}`]
+          }
+        }
+        return { ...s, dataValidation: dv }
       })
     }
 

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import type { DocumentType } from '@/types'
-import { createDocument, saveSlideDoc, saveDocDoc, getDocDoc } from '@/lib/document-store'
+import { createDocument, saveSlideDoc, saveDocDoc, getDocDoc } from '@/lib/cloud-store'
 import { useAIGenerate, useAIGenerateDoc } from '@/hooks/use-ai-generate'
 import { generateId } from '@/lib/utils'
 import { getSlideSkills, getDocSkills, isContentInput, extractDocTitle } from '@/lib/ai-skills'
@@ -100,9 +100,10 @@ export default function CreateModal({ open, onClose }: Props) {
         activeSlideId: '',
       }
       doc.activeSlideId = doc.slides[0]?.id ?? ''
-      saveSlideDoc(doc)
-      onClose()
-      router.push('/slides/' + docId)
+      saveSlideDoc(doc).then(() => {
+        onClose()
+        router.push('/slides/' + docId)
+      })
     }
   }, [isGeneratingSlides, aiSlides, step])
 
@@ -116,16 +117,18 @@ export default function CreateModal({ open, onClose }: Props) {
       createdDocId.current
     ) {
       const docId = createdDocId.current
-      const existing = getDocDoc(docId)
-      if (existing) {
-        const docTitle = title || extractDocTitle(aiPrompt)
-        const blocks = toBlocks(docTitle)
-        existing.blocks = blocks
-        existing.meta.title = docTitle
-        saveDocDoc(existing)
-      }
-      onClose()
-      router.push('/docs/' + docId)
+      ;(async () => {
+        const existing = await getDocDoc(docId)
+        if (existing) {
+          const docTitle = title || extractDocTitle(aiPrompt)
+          const blocks = toBlocks(docTitle)
+          existing.blocks = blocks
+          existing.meta.title = docTitle
+          await saveDocDoc(existing)
+        }
+        onClose()
+        router.push('/docs/' + docId)
+      })()
     }
   }, [isGeneratingDoc, aiSections, step])
 
@@ -136,10 +139,11 @@ export default function CreateModal({ open, onClose }: Props) {
     setStep('config')
   }
 
-  function handleCreate() {
+  async function handleCreate() {
     if (useAI && aiPrompt.trim()) {
       const docTitle = title || extractDocTitle(aiPrompt)
-      const meta = createDocument(docType, docTitle)
+      const meta = await createDocument(docType, docTitle)
+      if (!meta) return
       createdDocId.current = meta.id
       setStep('generating')
       if (docType === 'slides') {
@@ -148,16 +152,17 @@ export default function CreateModal({ open, onClose }: Props) {
         generateDoc(aiPrompt, skillId)
       }
     } else {
-      const meta = createDocument(docType, title)
+      const meta = await createDocument(docType, title)
+      if (!meta) return
       // Apply doc template if selected (non-AI doc creation)
       if (docType === 'doc' && docTemplateId !== 'blank') {
         const tpl = DOC_TEMPLATES.find((t) => t.id === docTemplateId)
         if (tpl) {
-          const existing = getDocDoc(meta.id)
+          const existing = await getDocDoc(meta.id)
           if (existing) {
             existing.blocks = tpl.buildDoc()
             if (title) existing.blocks[0].content = title
-            saveDocDoc(existing)
+            await saveDocDoc(existing)
           }
         }
       }
@@ -178,8 +183,8 @@ export default function CreateModal({ open, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg mx-4 shadow-2xl overflow-hidden">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={onClose} />
+      <div className="relative glass bg-slate-900/80 border border-slate-700/50 rounded-2xl w-full max-w-lg mx-4 shadow-2xl shadow-indigo-500/5 overflow-hidden animate-slide-up">
         {step === 'choose' && <ChooseStep onChoose={handleChoose} onClose={onClose} />}
         {step === 'config' && (
           <ConfigStep
@@ -268,12 +273,17 @@ function TypeCard({
   return (
     <button
       onClick={onClick}
-      className="group flex flex-col items-center gap-3 p-6 rounded-xl border border-slate-700 hover:border-indigo-500 bg-slate-800 transition-all text-center"
+      className="group flex flex-col items-center gap-3 p-6 rounded-xl border border-slate-700 hover:border-indigo-500 bg-slate-800/80 hover:bg-slate-800 transition-all duration-200 text-center hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-500/10"
     >
-      <div
-        className={`w-14 h-14 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center text-2xl shadow-lg group-hover:scale-110 transition-transform`}
-      >
-        {icon}
+      <div className="relative">
+        <div
+          className={`w-14 h-14 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center text-2xl shadow-lg group-hover:scale-110 transition-transform duration-200`}
+        >
+          {icon}
+        </div>
+        <div
+          className={`absolute inset-0 rounded-xl bg-gradient-to-br ${color} opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300`}
+        />
       </div>
       <div>
         <div className="font-semibold text-white text-sm">{title}</div>
@@ -342,7 +352,7 @@ function ConfigStep({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={docType === 'slides' ? '例: Q4 事業報告' : '例: プロジェクト仕様書'}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:border-indigo-500 focus:outline-none transition-colors"
+            className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-all duration-200"
           />
         </div>
 
@@ -354,10 +364,10 @@ function ConfigStep({
                 <button
                   key={tpl.id}
                   onClick={() => setDocTemplateId(tpl.id)}
-                  className={`flex items-center gap-2 p-2.5 rounded-lg border text-left transition-all ${
+                  className={`flex items-center gap-2 p-2.5 rounded-lg border text-left transition-all duration-200 ${
                     docTemplateId === tpl.id
-                      ? 'border-indigo-500 bg-indigo-500/10 text-white'
-                      : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-500 hover:text-white'
+                      ? 'border-indigo-500 bg-indigo-500/10 text-white shadow-md shadow-indigo-500/10'
+                      : 'border-slate-700 bg-slate-800/80 text-slate-400 hover:border-slate-500 hover:text-white hover:bg-slate-800'
                   }`}
                 >
                   <span className="flex-shrink-0">
@@ -377,10 +387,10 @@ function ConfigStep({
           <label className="flex items-center gap-2 cursor-pointer mb-3">
             <div
               onClick={() => setUseAI(!useAI)}
-              className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${useAI ? 'bg-indigo-500' : 'bg-slate-700'}`}
+              className={`w-9 h-5 rounded-full transition-all duration-200 relative cursor-pointer ${useAI ? 'bg-gradient-to-r from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30' : 'bg-slate-700'}`}
             >
               <div
-                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useAI ? 'translate-x-4' : 'translate-x-0.5'}`}
+                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all duration-200 ${useAI ? 'translate-x-4' : 'translate-x-0.5'}`}
               />
             </div>
             <span className="text-sm text-slate-300 flex items-center gap-1">
@@ -397,10 +407,10 @@ function ConfigStep({
                     <button
                       key={skill.id}
                       onClick={() => setSkillId(skill.id)}
-                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border text-center transition-all ${
+                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border text-center transition-all duration-200 ${
                         skillId === skill.id
-                          ? 'border-indigo-500 bg-indigo-500/10 text-white'
-                          : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-500 hover:text-white'
+                          ? 'border-indigo-500 bg-indigo-500/10 text-white shadow-md shadow-indigo-500/10'
+                          : 'border-slate-700 bg-slate-800/80 text-slate-400 hover:border-slate-500 hover:text-white hover:bg-slate-800'
                       }`}
                     >
                       <IconFromKey name={skill.icon} size={18} className="text-slate-400" />
@@ -424,7 +434,7 @@ function ConfigStep({
                   onChange={(e) => setAiPrompt(e.target.value)}
                   placeholder={placeholder}
                   rows={4}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:border-indigo-500 focus:outline-none transition-colors resize-y min-h-[80px] max-h-[200px]"
+                  className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-all duration-200 resize-y min-h-[80px] max-h-[200px]"
                 />
                 <p className="text-[10px] text-slate-500 mt-1 flex items-start gap-1">
                   <Lightbulb size={10} className="flex-shrink-0 mt-0.5" />{' '}
@@ -438,7 +448,7 @@ function ConfigStep({
         <button
           onClick={onCreate}
           disabled={useAI && !aiPrompt.trim()}
-          className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
+          className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-all duration-200 text-sm shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30"
         >
           {useAI ? `AIで${typeLabel}を生成する` : '作成する'}
         </button>
@@ -463,8 +473,11 @@ function GeneratingStep({
   const label = docType === 'slides' ? 'スライド' : 'セクション'
   return (
     <div className="p-8 text-center">
-      <div className="w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center mx-auto mb-4 animate-pulse">
-        <Sparkles size={24} className="text-white" />
+      <div className="relative w-12 h-12 mx-auto mb-4">
+        <div className="absolute inset-0 rounded-full bg-indigo-500/30 animate-glow-pulse blur-md" />
+        <div className="relative w-12 h-12 rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center animate-pulse shadow-lg shadow-indigo-500/30">
+          <Sparkles size={24} className="text-white" />
+        </div>
       </div>
       <h2 className="text-white font-semibold text-lg mb-1">AIが{label}を生成中...</h2>
       <p className="text-slate-400 text-sm mb-6 truncate">{topic}</p>
@@ -473,20 +486,20 @@ function GeneratingStep({
         {Array.from({ length: total }).map((_, i) => (
           <div key={i} className="flex items-center gap-3">
             <div
-              className={`w-4 h-4 rounded-full flex items-center justify-center text-xs transition-all flex-shrink-0 ${i < count ? 'bg-indigo-500 text-white' : 'bg-slate-700'}`}
+              className={`w-5 h-5 rounded-full flex items-center justify-center text-xs transition-all duration-300 flex-shrink-0 ${i < count ? 'bg-gradient-to-br from-indigo-500 to-violet-500 text-white scale-100 shadow-sm shadow-indigo-500/30' : 'bg-slate-700/80 scale-90'}`}
             >
-              {i < count ? '✓' : ''}
+              {i < count ? <span className="animate-scale-in">✓</span> : ''}
             </div>
-            <div className={`text-sm truncate transition-colors ${i < count ? 'text-white' : 'text-slate-600'}`}>
+            <div className={`text-sm truncate transition-all duration-300 ${i < count ? 'text-white' : 'text-slate-600'}`}>
               {items[i] ?? `${label} ${i + 1}`}
             </div>
           </div>
         ))}
       </div>
 
-      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+      <div className="h-2 bg-slate-800/80 rounded-full overflow-hidden">
         <div
-          className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+          className="h-full bg-gradient-to-r from-indigo-500 via-violet-500 to-indigo-500 rounded-full transition-all duration-700 ease-out"
           style={{ width: `${(count / total) * 100}%` }}
         />
       </div>

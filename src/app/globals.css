@@ -222,6 +222,180 @@ html.light-theme ruby rt {
   animation: scale-in 0.12s ease-out;
 }
 
+/* Float animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+/* Shimmer animation */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Fade-in animation */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Slide-up animation */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Slide-down animation */
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Glow pulse animation */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* Animation utility classes */
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-shimmer { animation: shimmer 2s linear infinite; background-size: 200% 100%; }
+.animate-fade-in { animation: fade-in 0.3s ease-out; }
+.animate-slide-up { animation: slide-up 0.2s ease-out; }
+.animate-slide-down { animation: slide-down 0.2s ease-out; }
+.animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
+
+/* Stagger delay utilities for grid animations */
+.stagger-1 { animation-delay: 0.05s; animation-fill-mode: backwards; }
+.stagger-2 { animation-delay: 0.1s; animation-fill-mode: backwards; }
+.stagger-3 { animation-delay: 0.15s; animation-fill-mode: backwards; }
+.stagger-4 { animation-delay: 0.2s; animation-fill-mode: backwards; }
+.stagger-5 { animation-delay: 0.25s; animation-fill-mode: backwards; }
+
+/* Glass morphism utility */
+.glass {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+html.light-theme .glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.5);
+}
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Custom scrollbar (subtle, thin) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.3);
+  border-radius: 2px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.5);
+}
+
+/* Page layout mode: override dark-mode text colors for white paper */
+.page-layout-content .text-white {
+  color: #0f172a;
+}
+
+.page-layout-content .text-slate-300 {
+  color: #334155;
+}
+
+.page-layout-content .text-slate-400 {
+  color: #475569;
+}
+
+.page-layout-content .text-slate-500 {
+  color: #64748b;
+}
+
+.page-layout-content .text-slate-200 {
+  color: #1e293b;
+}
+
+.page-layout-content .text-slate-100 {
+  color: #0f172a;
+}
+
+.page-layout-content .placeholder-slate-500::placeholder,
+.page-layout-content [contenteditable]:empty::before {
+  color: rgba(100, 116, 139, 0.5);
+}
+
+/* Callout variants on white paper */
+.page-layout-content .text-blue-300 {
+  color: #1e40af;
+}
+
+.page-layout-content .text-amber-300 {
+  color: #b45309;
+}
+
+.page-layout-content .text-emerald-300 {
+  color: #047857;
+}
+
+.page-layout-content .text-red-300 {
+  color: #dc2626;
+}
+
+/* Callout backgrounds on white paper */
+.page-layout-content .bg-blue-500\/10 {
+  background-color: rgba(59, 130, 246, 0.08);
+}
+
+.page-layout-content .bg-amber-500\/10 {
+  background-color: rgba(245, 158, 11, 0.08);
+}
+
+.page-layout-content .bg-emerald-500\/10 {
+  background-color: rgba(16, 185, 129, 0.08);
+}
+
+.page-layout-content .bg-red-500\/10 {
+  background-color: rgba(239, 68, 68, 0.08);
+}
+
+/* Borders on white paper */
+.page-layout-content .border-slate-800 {
+  border-color: #e2e8f0;
+}
+
+.page-layout-content .border-slate-700 {
+  border-color: #cbd5e1;
+}
+
+/* Code blocks on white paper */
+.page-layout-content .bg-slate-900 {
+  background-color: #f1f5f9;
+}
+
+.page-layout-content .bg-slate-800 {
+  background-color: #e2e8f0;
+}
+
+/* Bullet markers on white paper */
+.page-layout-content .before\:text-indigo-400::before {
+  color: #4f46e5;
+}
+
 @media print {
   .no-print {
     display: none !important;

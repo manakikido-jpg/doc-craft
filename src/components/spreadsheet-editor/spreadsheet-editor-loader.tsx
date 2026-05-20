@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { SpreadsheetDocument } from '@/types'
-import { getSpreadsheetDoc } from '@/lib/document-store'
+import { getSpreadsheetDoc } from '@/lib/cloud-store'
 import SpreadsheetEditor from './spreadsheet-editor'
 import { ErrorBoundary } from '@/components/shared/error-boundary'
 
@@ -13,13 +13,14 @@ export default function SpreadsheetEditorLoader({ id }: { id: string }) {
   const router = useRouter()
 
   useEffect(() => {
-    const d = getSpreadsheetDoc(id)
-    if (!d) {
-      router.push('/dashboard')
-    } else {
-      setDoc(d)
-    }
-    setLoading(false)
+    getSpreadsheetDoc(id).then((d) => {
+      if (!d) {
+        router.push('/dashboard')
+      } else {
+        setDoc(d)
+      }
+      setLoading(false)
+    })
   }, [id])
 
   if (loading || !doc) {

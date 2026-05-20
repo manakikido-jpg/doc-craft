@@ -22,6 +22,9 @@ import {
   Printer,
   Trash2,
   Download,
+  FileDown,
+  ChevronDown,
+  Monitor,
   Plus,
   Table,
   Wallpaper,
@@ -46,8 +49,11 @@ interface Props {
   state: SlidesDocument
   dispatch: React.Dispatch<any>
   onExport: () => void
+  onExportPDF?: () => void
+  onExportPPTX?: () => void
   onDelete: () => void
   onPresent?: () => void
+  onPresenterView?: () => void
   canUndo?: boolean
   canRedo?: boolean
   onUndo?: () => void
@@ -60,8 +66,10 @@ interface Props {
   onVersions?: () => void
   onAutoLayout?: () => void
   onSorterView?: () => void
+  onSlideLayout?: () => void
   onAnimationPanel?: () => void
   onFooterSettings?: () => void
+  onPdfImport?: () => void
 }
 
 const SHAPE_CATEGORIES = [
@@ -114,9 +122,12 @@ export default function SlideToolbar({
   state,
   dispatch,
   onExport,
+  onExportPDF,
+  onExportPPTX,
   onPrint,
   onDelete,
   onPresent,
+  onPresenterView,
   canUndo,
   canRedo,
   onUndo,
@@ -128,8 +139,10 @@ export default function SlideToolbar({
   onVersions,
   onAutoLayout,
   onSorterView,
+  onSlideLayout,
   onAnimationPanel,
   onFooterSettings,
+  onPdfImport,
 }: Props) {
   const activeSlide = state.slides.find((s) => s.id === state.activeSlideId)
   const [shapeMenu, setShapeMenu] = useState(false)
@@ -139,6 +152,7 @@ export default function SlideToolbar({
   const [textMenu, setTextMenu] = useState(false)
   const [tableMenu, setTableMenu] = useState(false)
   const [chartMenu, setChartMenu] = useState(false)
+  const [exportMenu, setExportMenu] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const bgFileRef = useRef<HTMLInputElement>(null)
   const commentCount = (state.comments || []).filter((c) => !c.resolved).length
@@ -590,6 +604,17 @@ export default function SlideToolbar({
           </button>
         )}
 
+        {onSlideLayout && (
+          <button
+            onClick={onSlideLayout}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            title="レイアウト"
+            aria-label="レイアウト"
+          >
+            <LayoutGrid size={14} />
+          </button>
+        )}
+
         {onAutoLayout && (
           <button
             onClick={onAutoLayout}
@@ -598,6 +623,17 @@ export default function SlideToolbar({
             aria-label="自動レイアウト"
           >
             <Sparkles size={14} />
+          </button>
+        )}
+
+        {onPdfImport && (
+          <button
+            onClick={onPdfImport}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-rose-500 bg-slate-800 text-slate-400 hover:text-rose-400 transition-colors"
+            title="PDF読み込み"
+            aria-label="PDF読み込み"
+          >
+            <FileDown size={14} />
           </button>
         )}
 
@@ -675,16 +711,60 @@ export default function SlideToolbar({
           </button>
         )}
 
-        <button
-          onClick={onExport}
-          className="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-all active:scale-95"
-          title="HTMLエクスポート"
-        >
-          <span className="max-md:hidden">{t('editor.export')}</span>
-          <span className="md:hidden">
-            <Download size={14} />
-          </span>
-        </button>
+        {onPresenterView && (
+          <button
+            onClick={onPresenterView}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            title="発表者ビュー"
+            aria-label="発表者ビュー"
+          >
+            <Monitor size={14} />
+          </button>
+        )}
+
+        <div className="relative">
+          <button
+            onClick={() => setExportMenu(!exportMenu)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-all active:scale-95"
+            title="エクスポート"
+          >
+            <FileDown size={12} />
+            <span className="max-md:hidden">{t('editor.export')}</span>
+            <ChevronDown size={10} />
+          </button>
+          {exportMenu && (
+            <div
+              className="absolute top-full mt-1 right-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 z-50 w-40 animate-slide-up"
+              role="menu"
+            >
+              <button
+                role="menuitem"
+                onClick={() => { onExport(); setExportMenu(false) }}
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
+              >
+                HTML
+              </button>
+              {onExportPDF && (
+                <button
+                  role="menuitem"
+                  onClick={() => { onExportPDF(); setExportMenu(false) }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
+                >
+                  PDF
+                </button>
+              )}
+              {onExportPPTX && (
+                <button
+                  role="menuitem"
+                  onClick={() => { onExportPPTX(); setExportMenu(false) }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
+                >
+                  PPTX
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {onPrint && (
           <button

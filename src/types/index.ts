@@ -7,6 +7,7 @@ export interface DocumentMeta {
   createdAt: string
   updatedAt: string
   thumbnailTheme?: string
+  folder?: string
 }
 
 export type SlideThemeKey =
@@ -395,6 +396,14 @@ export interface ConditionalFormat {
   style: { bgColor?: string; textColor?: string; bold?: boolean }
 }
 
+export interface DataValidation {
+  type: 'number' | 'text' | 'list' | 'date'
+  min?: number
+  max?: number
+  listValues?: string[]
+  errorMessage?: string
+}
+
 export interface Sheet {
   id: string
   name: string
@@ -409,6 +418,7 @@ export interface Sheet {
   sortState?: { col: number; direction: 'asc' | 'desc' }
   filterState?: { col: number; values: string[] }[]
   conditionalFormats?: ConditionalFormat[]
+  dataValidation?: Record<string, DataValidation>  // key: "row-col"
 }
 
 export interface SpreadsheetDocument {

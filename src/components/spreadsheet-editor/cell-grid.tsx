@@ -23,6 +23,9 @@ interface Props {
   onCancelEdit: () => void
   onContextMenu: (x: number, y: number) => void
   dispatch: (action: UndoableAction<SpreadsheetAction>) => void
+  validationError?: string | null
+  onListSelect?: (row: number, col: number, value: string) => void
+  cutRange?: SelectionRange | null
 }
 
 const DEFAULT_COL_WIDTH = 100
@@ -113,13 +116,19 @@ export default memo(function CellGrid({
   onCancelEdit,
   onContextMenu,
   dispatch,
+  validationError,
+  onListSelect,
+  cutRange,
 }: Props) {
   const editInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [isFillDragging, setIsFillDragging] = useState(false)
+  const [fillTarget, setFillTarget] = useState<{ row: number; col: number } | null>(null)
   const [resizingCol, setResizingCol] = useState<number | null>(null)
   const [resizingRow, setResizingRow] = useState<number | null>(null)
   const resizeStartRef = useRef<{ pos: number; size: number }>({ pos: 0, size: 0 })
   const [filterDropdown, setFilterDropdown] = useState<{ col: number } | null>(null)
+  const [listDropdown, setListDropdown] = useState<{ row: number; col: number } | null>(null)
 
   const frozenRows = sheet.frozenRows ?? 0
   const frozenCols = sheet.frozenCols ?? 0
@@ -240,16 +249,104 @@ export default memo(function CellGrid({
       if (isDragging) {
         onExtendSelection(row, col)
       }
+      if (isFillDragging) {
+        setFillTarget({ row, col })
+      }
     },
-    [isDragging, onExtendSelection],
+    [isDragging, isFillDragging, onExtendSelection],
   )
 
   useEffect(() => {
     function handleMouseUp() {
       setIsDragging(false)
+      if (isFillDragging && fillTarget && selectedCell) {
+        // Perform auto-fill from selection to fillTarget
+        const range = selectionRange || { startRow: selectedCell.row, startCol: selectedCell.col, endRow: selectedCell.row, endCol: selectedCell.col }
+        const normRange = {
+          startRow: Math.min(range.startRow, range.endRow),
+          startCol: Math.min(range.startCol, range.endCol),
+          endRow: Math.max(range.startRow, range.endRow),
+          endCol: Math.max(range.startCol, range.endCol),
+        }
+        // Fill downward
+        if (fillTarget.row > normRange.endRow) {
+          for (let c = normRange.startCol; c <= normRange.endCol; c++) {
+            const sourceValues: string[] = []
+            for (let r = normRange.startRow; r <= normRange.endRow; r++) {
+              sourceValues.push(sheet.cells[`${r}-${c}`]?.value ?? '')
+            }
+            for (let r = normRange.endRow + 1; r <= fillTarget.row; r++) {
+              const idx = (r - normRange.endRow - 1) % sourceValues.length
+              const srcVal = sourceValues[idx]
+              const srcNum = Number(srcVal)
+              let fillVal = srcVal
+              // Detect numeric pattern: if all source values are numbers, increment
+              if (sourceValues.length === 1 && !isNaN(srcNum) && srcVal !== '') {
+                fillVal = String(srcNum + (r - normRange.endRow))
+              } else if (sourceValues.every((v) => !isNaN(Number(v)) && v !== '') && sourceValues.length > 1) {
+                const diff = Number(sourceValues[1]) - Number(sourceValues[0])
+                fillVal = String(Number(sourceValues[sourceValues.length - 1]) + diff * (r - normRange.endRow))
+              }
+              dispatch({
+                type: 'SET_CELL_VALUE',
+                sheetId: sheet.id,
+                row: r,
+                col: c,
+                value: fillVal,
+              })
+            }
+          }
+        }
+        // Fill rightward
+        if (fillTarget.col > normRange.endCol) {
+          for (let r = normRange.startRow; r <= normRange.endRow; r++) {
+            const sourceValues: string[] = []
+            for (let c = normRange.startCol; c <= normRange.endCol; c++) {
+              sourceValues.push(sheet.cells[`${r}-${c}`]?.value ?? '')
+            }
+            for (let c = normRange.endCol + 1; c <= fillTarget.col; c++) {
+              const idx = (c - normRange.endCol - 1) % sourceValues.length
+              const srcVal = sourceValues[idx]
+              const srcNum = Number(srcVal)
+              let fillVal = srcVal
+              if (sourceValues.length === 1 && !isNaN(srcNum) && srcVal !== '') {
+                fillVal = String(srcNum + (c - normRange.endCol))
+              } else if (sourceValues.every((v) => !isNaN(Number(v)) && v !== '') && sourceValues.length > 1) {
+                const diff = Number(sourceValues[1]) - Number(sourceValues[0])
+                fillVal = String(Number(sourceValues[sourceValues.length - 1]) + diff * (c - normRange.endCol))
+              }
+              dispatch({
+                type: 'SET_CELL_VALUE',
+                sheetId: sheet.id,
+                row: r,
+                col: c,
+                value: fillVal,
+              })
+            }
+          }
+        }
+        setIsFillDragging(false)
+        setFillTarget(null)
+      }
     }
     window.addEventListener('mouseup', handleMouseUp)
     return () => window.removeEventListener('mouseup', handleMouseUp)
+  }, [isFillDragging, fillTarget, selectedCell, selectionRange, sheet.cells, sheet.id, dispatch])
+
+  // Fill handle drag: track which cell the mouse is over
+  const handleFillMouseEnter = useCallback(
+    (row: number, col: number) => {
+      if (isFillDragging) {
+        setFillTarget({ row, col })
+      }
+    },
+    [isFillDragging],
+  )
+
+  const handleFillHandleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsFillDragging(true)
   }, [])
 
   // Column resize handlers
@@ -323,6 +420,36 @@ export default memo(function CellGrid({
     onSelectCell(0, 0)
     onExtendSelection(sheet.rowCount - 1, sheet.colCount - 1)
   }, [onSelectCell, onExtendSelection, sheet.rowCount, sheet.colCount])
+
+  // Compute fill range for highlighting
+  const fillRange = useMemo(() => {
+    if (!isFillDragging || !fillTarget || !selectedCell) return null
+    const range = selectionRange || { startRow: selectedCell.row, startCol: selectedCell.col, endRow: selectedCell.row, endCol: selectedCell.col }
+    const normRange = {
+      startRow: Math.min(range.startRow, range.endRow),
+      startCol: Math.min(range.startCol, range.endCol),
+      endRow: Math.max(range.startRow, range.endRow),
+      endCol: Math.max(range.startCol, range.endCol),
+    }
+    return {
+      startRow: normRange.endRow + 1,
+      startCol: normRange.startCol,
+      endRow: Math.max(normRange.endRow, fillTarget.row),
+      endCol: Math.max(normRange.endCol, fillTarget.col),
+    }
+  }, [isFillDragging, fillTarget, selectedCell, selectionRange])
+
+  // Bottom-right cell of current selection (for fill handle placement)
+  const selectionBottomRight = useMemo(() => {
+    if (!selectedCell) return null
+    if (selectionRange) {
+      return {
+        row: Math.max(selectionRange.startRow, selectionRange.endRow),
+        col: Math.max(selectionRange.startCol, selectionRange.endCol),
+      }
+    }
+    return { row: selectedCell.row, col: selectedCell.col }
+  }, [selectedCell, selectionRange])
 
   // Compute frozen area sizes
   const _frozenColsWidth = useMemo(() => {
@@ -490,6 +617,7 @@ export default memo(function CellGrid({
                     const isSelected = selectedCell?.row === r && selectedCell?.col === c
                     const isEditing = editingCell?.row === r && editingCell?.col === c
                     const inRange = isInRange(r, c, selectionRange)
+                    const inCutRange = isInRange(r, c, cutRange || null)
                     const fmt = cell?.format || {}
                     const isFrozenCol = c < frozenCols
 
@@ -548,6 +676,20 @@ export default memo(function CellGrid({
                       cellStyle.borderBottom = '2px solid rgb(99, 102, 241)'
                     }
 
+                    const isFillRangeCell = fillRange && r >= fillRange.startRow && r <= fillRange.endRow && c >= fillRange.startCol && c <= fillRange.endCol
+                    const isBottomRight = selectionBottomRight && r === selectionBottomRight.row && c === selectionBottomRight.col && !isEditing
+                    const cellValidation = sheet.dataValidation?.[key]
+                    const hasListValidation = cellValidation?.type === 'list'
+                    const isListOpen = listDropdown?.row === r && listDropdown?.col === c
+
+                    // Cut range dashed border (marching ants style)
+                    if (inCutRange && cutRange) {
+                      if (r === cutRange.startRow) cellStyle.borderTop = '2px dashed rgb(245, 158, 11)'
+                      if (r === cutRange.endRow) cellStyle.borderBottom = '2px dashed rgb(245, 158, 11)'
+                      if (c === cutRange.startCol) cellStyle.borderLeft = '2px dashed rgb(245, 158, 11)'
+                      if (c === cutRange.endCol) cellStyle.borderRight = '2px dashed rgb(245, 158, 11)'
+                    }
+
                     return (
                       <td
                         key={c}
@@ -555,7 +697,7 @@ export default memo(function CellGrid({
                         colSpan={merge?.colSpan}
                         className={`border-b border-r border-slate-800 px-1 relative overflow-hidden ${
                           isSelected ? 'outline outline-2 outline-indigo-500 z-[5]' : inRange ? 'bg-indigo-500/10' : ''
-                        }${isFrozenCol || isFrozenRow ? ' bg-slate-900' : ''}`}
+                        }${isFrozenCol || isFrozenRow ? ' bg-slate-900' : ''}${isFillRangeCell ? ' bg-indigo-500/20 outline-dashed outline-1 outline-indigo-400' : ''}${inCutRange ? ' bg-amber-500/5' : ''}`}
                         style={cellStyle}
                         onMouseDown={(e) => handleMouseDown(e, r, c)}
                         onMouseEnter={() => handleMouseEnter(r, c)}
@@ -567,32 +709,83 @@ export default memo(function CellGrid({
                         }}
                       >
                         {isEditing ? (
-                          <input
-                            ref={editInputRef}
-                            type="text"
-                            value={editValue}
-                            onChange={(e) => onEditValueChange(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                onCommitEdit()
-                              }
-                              if (e.key === 'Escape') {
-                                e.preventDefault()
-                                onCancelEdit()
-                              }
-                              if (e.key === 'Tab') {
-                                e.preventDefault()
-                                onCommitEdit()
-                              }
-                              e.stopPropagation()
-                            }}
-                            onBlur={() => onCommitEdit()}
-                            className="absolute inset-0 bg-slate-900 text-white text-xs px-1 outline-none border-2 border-indigo-500 font-mono z-10"
-                            style={{ textAlign: fmt.align || 'left' }}
-                          />
+                          <>
+                            <input
+                              ref={editInputRef}
+                              type="text"
+                              value={editValue}
+                              onChange={(e) => onEditValueChange(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  onCommitEdit()
+                                }
+                                if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  onCancelEdit()
+                                }
+                                if (e.key === 'Tab') {
+                                  e.preventDefault()
+                                  onCommitEdit()
+                                }
+                                e.stopPropagation()
+                              }}
+                              onBlur={() => onCommitEdit()}
+                              className="absolute inset-0 bg-slate-900 text-white text-xs px-1 outline-none border-2 border-indigo-500 font-mono z-10"
+                              style={{ textAlign: fmt.align || 'left' }}
+                            />
+                            {validationError && isSelected && (
+                              <div className="absolute top-full left-0 mt-0.5 z-20 bg-red-600 text-white text-[10px] px-2 py-1 rounded shadow-lg whitespace-nowrap">
+                                {validationError}
+                              </div>
+                            )}
+                          </>
                         ) : (
-                          <span className="text-xs leading-none pointer-events-none">{displayValue}</span>
+                          <>
+                            <span className="text-xs leading-none pointer-events-none">{displayValue}</span>
+                            {/* List validation dropdown arrow */}
+                            {hasListValidation && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setListDropdown(isListOpen ? null : { row: r, col: c })
+                                }}
+                                className="absolute right-0 top-0 bottom-0 w-5 flex items-center justify-center text-slate-500 hover:text-indigo-400 hover:bg-slate-700/50"
+                              >
+                                <ChevronDown size={12} />
+                              </button>
+                            )}
+                            {/* List dropdown */}
+                            {isListOpen && cellValidation?.listValues && (
+                              <>
+                                <div className="fixed inset-0 z-30" onClick={() => setListDropdown(null)} />
+                                <div className="absolute top-full left-0 mt-0.5 z-40 bg-slate-800 border border-slate-600 rounded shadow-xl w-full min-w-[100px] max-h-40 overflow-y-auto py-0.5">
+                                  {cellValidation.listValues.map((val) => (
+                                    <button
+                                      key={val}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        onListSelect?.(r, c, val)
+                                        setListDropdown(null)
+                                      }}
+                                      className={`w-full text-left px-2 py-1 text-xs hover:bg-indigo-600 hover:text-white transition-colors ${
+                                        displayValue === val ? 'text-indigo-400 bg-slate-700' : 'text-slate-300'
+                                      }`}
+                                    >
+                                      {val}
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </>
+                        )}
+                        {/* Fill handle */}
+                        {isBottomRight && (
+                          <div
+                            className="absolute bottom-[-3px] right-[-3px] w-[7px] h-[7px] bg-indigo-500 border border-white cursor-crosshair z-[6]"
+                            onMouseDown={handleFillHandleMouseDown}
+                          />
                         )}
                       </td>
                     )

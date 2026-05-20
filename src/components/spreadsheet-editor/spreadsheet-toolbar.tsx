@@ -33,6 +33,7 @@ import {
   ArrowRight,
   ChevronUp,
   ChevronDown,
+  BarChart3,
 } from 'lucide-react'
 
 interface Props {
@@ -42,6 +43,8 @@ interface Props {
   currentCellFormat?: CellFormat
   onFormatChange: (format: Partial<CellFormat>) => void
   dispatch: (action: UndoableAction<SpreadsheetAction>) => void
+  onOpenChartPanel?: () => void
+  onOpenPivot?: () => void
 }
 
 const TEXT_COLORS = [
@@ -111,6 +114,8 @@ export default function SpreadsheetToolbar({
   currentCellFormat,
   onFormatChange,
   dispatch,
+  onOpenChartPanel,
+  onOpenPivot,
 }: Props) {
   const [showTextColors, setShowTextColors] = useState(false)
   const [showBgColors, setShowBgColors] = useState(false)
@@ -774,6 +779,32 @@ export default function SpreadsheetToolbar({
             <ArrowRight size={14} />
           </button>
         </>
+      )}
+
+      <div className={DIVIDER} />
+
+      {/* ── Chart ── */}
+      <button
+        onClick={onOpenChartPanel}
+        className={`h-7 px-2 flex items-center gap-1 rounded text-xs ${BTN_DEFAULT}`}
+        title="グラフ作成"
+        aria-label="グラフ作成"
+      >
+        <BarChart3 size={14} />
+        <span className="hidden sm:inline">グラフ</span>
+      </button>
+
+      {/* ── Pivot Table ── */}
+      {onOpenPivot && (
+        <button
+          onClick={onOpenPivot}
+          className={`h-7 px-2 flex items-center gap-1 rounded text-xs ${BTN_DEFAULT}`}
+          title="ピボットテーブル"
+          aria-label="ピボットテーブル"
+        >
+          <Filter size={14} />
+          <span className="hidden sm:inline">ピボット</span>
+        </button>
       )}
 
       <div className={DIVIDER} />

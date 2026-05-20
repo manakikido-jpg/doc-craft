@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import type { SpreadsheetDocument, CellFormat } from '@/types'
+import type { SpreadsheetDocument, CellFormat, DataValidation } from '@/types'
 import { useSpreadsheet } from '@/hooks/use-spreadsheet'
 import { recalcAllCells, colIndexToLetter, colLetterToIndex } from '@/lib/formula-engine'
 import SpreadsheetToolbar from './spreadsheet-toolbar'
@@ -12,7 +12,16 @@ import SheetTabs from './sheet-tabs'
 import { FindReplaceDialog } from './find-replace-dialog'
 import { GoToDialog } from './goto-dialog'
 import { CellContextMenu } from './cell-context-menu'
-import { ArrowLeft, Undo2, Redo2, Download, Upload, Search } from 'lucide-react'
+import { DataValidationDialog } from './data-validation-dialog'
+import { PrintPreview } from './print-preview'
+import ChartPanel, { type SpreadsheetChart, renderChartSVG } from './chart-panel'
+import FormulaAutocomplete from './formula-autocomplete'
+import ShortcutsHelp from '../shared/shortcuts-help'
+import PdfAiPanel from '../shared/pdf-ai-panel'
+import PivotTableDialog, { type PivotResult } from './pivot-table-dialog'
+import { exportSpreadsheetToHTML, exportSpreadsheetToPDF, downloadFile } from '@/lib/export-utils'
+import { generateId } from '@/lib/utils'
+import { ArrowLeft, Undo2, Redo2, Download, Upload, Search, BarChart3, ChevronDown as ChevronDownIcon, X, ShieldCheck, Printer, FileDown } from 'lucide-react'
 
 interface Props {
   initialDoc: SpreadsheetDocument
@@ -36,6 +45,7 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
   const clipboardRef = useRef<{ data: Record<string, import('@/types').Cell>; width: number; height: number } | null>(
     null,
   )
+  const [cutRange, setCutRange] = useState<{ sheetId: string; range: SelectionRange } | null>(null)
   const csvInputRef = useRef<HTMLInputElement>(null)
 
   // Find & Replace state
@@ -48,6 +58,25 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
 
   // Go To dialog state
   const [goToOpen, setGoToOpen] = useState(false)
+
+  // Chart panel state
+  const [chartPanelOpen, setChartPanelOpen] = useState(false)
+  const [charts, setCharts] = useState<SpreadsheetChart[]>([])
+
+  // Formula autocomplete state
+  const [showFormulaAutocomplete, setShowFormulaAutocomplete] = useState(false)
+  const [formulaAnchorRect, setFormulaAnchorRect] = useState<{ top: number; left: number } | null>(null)
+  const [isSlashMode, setIsSlashMode] = useState(false)
+  const editCellRef = useRef<HTMLElement | null>(null)
+
+  // Export dropdown state
+  const [showExportMenu, setShowExportMenu] = useState(false)
+
+  // Data validation dialog state
+  const [validationDialogOpen, setValidationDialogOpen] = useState(false)
+
+  // Print preview state
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false)
 
   // Auto-save indicator
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved')
@@ -326,6 +355,54 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
     )
   }, [selectedCell, computedValues])
 
+  // Validation error for the currently editing cell
+  const validationError = useMemo(() => {
+    if (!editingCell || !activeSheet) return null
+    const key = `${editingCell.row}-${editingCell.col}`
+    const dv = activeSheet.dataValidation?.[key]
+    if (!dv || !editValue) return null
+    switch (dv.type) {
+      case 'number': {
+        const n = Number(editValue)
+        if (isNaN(n)) return dv.errorMessage || '数値を入力してください'
+        if (dv.min !== undefined && n < dv.min) return dv.errorMessage || `${dv.min}以上の値を入力してください`
+        if (dv.max !== undefined && n > dv.max) return dv.errorMessage || `${dv.max}以下の値を入力してください`
+        break
+      }
+      case 'text': {
+        if (dv.max !== undefined && editValue.length > dv.max) return dv.errorMessage || `${dv.max}文字以内で入力してください`
+        break
+      }
+      case 'list': {
+        if (dv.listValues && !dv.listValues.includes(editValue)) return dv.errorMessage || 'リストから選択してください'
+        break
+      }
+      case 'date': {
+        const dateNum = Number(editValue.replace(/\//g, ''))
+        if (isNaN(dateNum)) return dv.errorMessage || '日付を入力してください'
+        if (dv.min !== undefined && dateNum < dv.min) return dv.errorMessage || '範囲外の日付です'
+        if (dv.max !== undefined && dateNum > dv.max) return dv.errorMessage || '範囲外の日付です'
+        break
+      }
+    }
+    return null
+  }, [editingCell, editValue, activeSheet])
+
+  // Handle list selection from cell dropdown
+  const handleListSelect = useCallback(
+    (row: number, col: number, value: string) => {
+      if (!activeSheet) return
+      dispatch({
+        type: 'SET_CELL_VALUE',
+        sheetId: activeSheet.id,
+        row,
+        col,
+        value,
+      })
+    },
+    [activeSheet, dispatch],
+  )
+
   // CSV Import
   const handleCSVImport = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -384,8 +461,23 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
   )
 
   // Keyboard handler
+  // Shortcuts help state
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+
+  // Pivot table state
+  const [pivotOpen, setPivotOpen] = useState(false)
+  // PDF AI panel state
+  const [pdfAiOpen, setPdfAiOpen] = useState(false)
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // Shortcuts help
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault()
+        setShortcutsOpen(true)
+        return
+      }
+
       // Find & Replace
       if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !editingCell) {
         e.preventDefault()
@@ -546,42 +638,126 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
         return
       }
 
-      // Copy
+      // Copy (Ctrl+C)
       if ((e.ctrlKey || e.metaKey) && e.key === 'c' && !editingCell && activeSheet && normalizedRange) {
         e.preventDefault()
         const data: Record<string, import('@/types').Cell> = {}
+        const tsvRows: string[] = []
         for (let r = normalizedRange.startRow; r <= normalizedRange.endRow; r++) {
+          const rowVals: string[] = []
           for (let c = normalizedRange.startCol; c <= normalizedRange.endCol; c++) {
             const key = `${r}-${c}`
             if (activeSheet.cells[key]) {
               data[`${r - normalizedRange.startRow}-${c - normalizedRange.startCol}`] = { ...activeSheet.cells[key] }
             }
+            // Use computed value for TSV (so formulas show results)
+            const cv = computedValues[key]
+            rowVals.push(cv != null ? String(cv) : activeSheet.cells[key]?.value || '')
           }
+          tsvRows.push(rowVals.join('\t'))
         }
         clipboardRef.current = {
           data,
           width: normalizedRange.endCol - normalizedRange.startCol + 1,
           height: normalizedRange.endRow - normalizedRange.startRow + 1,
         }
+        setCutRange(null)
+        // Write TSV to system clipboard for Excel/Sheets interop
+        try { navigator.clipboard.writeText(tsvRows.join('\n')) } catch {}
         return
       }
 
-      // Paste
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        e.key === 'v' &&
-        !editingCell &&
-        activeSheet &&
-        selectedCell &&
-        clipboardRef.current
-      ) {
+      // Cut (Ctrl+X)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'x' && !editingCell && activeSheet && normalizedRange) {
         e.preventDefault()
-        dispatch({
-          type: 'PASTE_CELLS',
-          sheetId: activeSheet.id,
-          startRow: selectedCell.row,
-          startCol: selectedCell.col,
-          data: clipboardRef.current.data,
+        const data: Record<string, import('@/types').Cell> = {}
+        const tsvRows: string[] = []
+        for (let r = normalizedRange.startRow; r <= normalizedRange.endRow; r++) {
+          const rowVals: string[] = []
+          for (let c = normalizedRange.startCol; c <= normalizedRange.endCol; c++) {
+            const key = `${r}-${c}`
+            if (activeSheet.cells[key]) {
+              data[`${r - normalizedRange.startRow}-${c - normalizedRange.startCol}`] = { ...activeSheet.cells[key] }
+            }
+            const cv = computedValues[key]
+            rowVals.push(cv != null ? String(cv) : activeSheet.cells[key]?.value || '')
+          }
+          tsvRows.push(rowVals.join('\t'))
+        }
+        clipboardRef.current = {
+          data,
+          width: normalizedRange.endCol - normalizedRange.startCol + 1,
+          height: normalizedRange.endRow - normalizedRange.startRow + 1,
+        }
+        setCutRange({ sheetId: activeSheet.id, range: { ...normalizedRange } })
+        try { navigator.clipboard.writeText(tsvRows.join('\n')) } catch {}
+        return
+      }
+
+      // Paste (Ctrl+V)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v' && !editingCell && activeSheet && selectedCell) {
+        e.preventDefault()
+        // Try system clipboard first for external data (Excel, Sheets, etc.)
+        navigator.clipboard.readText().then((text) => {
+          if (text && text.includes('\t')) {
+            // Parse TSV from external source
+            const rows = text.split(/\r?\n/).filter((r) => r.length > 0)
+            const extData: Record<string, import('@/types').Cell> = {}
+            rows.forEach((row, ri) => {
+              row.split('\t').forEach((val, ci) => {
+                if (val) extData[`${ri}-${ci}`] = { value: val }
+              })
+            })
+            dispatch({
+              type: 'PASTE_CELLS',
+              sheetId: activeSheet.id,
+              startRow: selectedCell.row,
+              startCol: selectedCell.col,
+              data: extData,
+            })
+            // If this was a cut, clear source cells
+            if (cutRange && cutRange.sheetId) {
+              dispatch({ type: 'CLEAR_CELLS', sheetId: cutRange.sheetId, startRow: cutRange.range.startRow, startCol: cutRange.range.startCol, endRow: cutRange.range.endRow, endCol: cutRange.range.endCol })
+              setCutRange(null)
+            }
+          } else if (clipboardRef.current) {
+            // Fall back to internal clipboard
+            dispatch({
+              type: 'PASTE_CELLS',
+              sheetId: activeSheet.id,
+              startRow: selectedCell.row,
+              startCol: selectedCell.col,
+              data: clipboardRef.current.data,
+            })
+            if (cutRange && cutRange.sheetId) {
+              dispatch({ type: 'CLEAR_CELLS', sheetId: cutRange.sheetId, startRow: cutRange.range.startRow, startCol: cutRange.range.startCol, endRow: cutRange.range.endRow, endCol: cutRange.range.endCol })
+              setCutRange(null)
+            }
+          } else if (text) {
+            // Single value from clipboard
+            dispatch({
+              type: 'SET_CELL_VALUE',
+              sheetId: activeSheet.id,
+              row: selectedCell.row,
+              col: selectedCell.col,
+              value: text.trim(),
+            })
+          }
+        }).catch(() => {
+          // Clipboard API not available, use internal clipboard
+          if (clipboardRef.current) {
+            dispatch({
+              type: 'PASTE_CELLS',
+              sheetId: activeSheet.id,
+              startRow: selectedCell.row,
+              startCol: selectedCell.col,
+              data: clipboardRef.current.data,
+            })
+            if (cutRange) {
+              dispatch({ type: 'CLEAR_CELLS', sheetId: cutRange.sheetId, startRow: cutRange.range.startRow, startCol: cutRange.range.startCol, endRow: cutRange.range.endRow, endCol: cutRange.range.endCol })
+              setCutRange(null)
+            }
+          }
         })
         return
       }
@@ -823,6 +999,99 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
     URL.revokeObjectURL(url)
   }, [activeSheet, computedValues, state.meta.title])
 
+  const handleExportHTML = useCallback(() => {
+    const doc: import('@/types').SpreadsheetDocument = {
+      meta: state.meta,
+      sheets: state.sheets,
+      activeSheetId: state.activeSheetId,
+    }
+    const html = exportSpreadsheetToHTML(doc)
+    downloadFile(html, (state.meta.title || 'spreadsheet') + '.html')
+    setShowExportMenu(false)
+  }, [state])
+
+  const handleExportPDF = useCallback(() => {
+    const doc: import('@/types').SpreadsheetDocument = {
+      meta: state.meta,
+      sheets: state.sheets,
+      activeSheetId: state.activeSheetId,
+    }
+    exportSpreadsheetToPDF(doc)
+    setShowExportMenu(false)
+  }, [state])
+
+  const handleAddChart = useCallback((chart: SpreadsheetChart) => {
+    setCharts((prev) => [...prev, chart])
+  }, [])
+
+  const handleRemoveChart = useCallback((chartId: string) => {
+    setCharts((prev) => prev.filter((c) => c.id !== chartId))
+  }, [])
+
+  const handleFormulaSelect = useCallback(
+    (funcName: string) => {
+      if (!editingCell) return
+      if (isSlashMode) {
+        // Slash mode: replace entire "/text" with "=FUNCTION("
+        setEditValue('=' + funcName + '(')
+        setShowFormulaAutocomplete(false)
+        setIsSlashMode(false)
+        return
+      }
+      // Replace the partial function name typed so far
+      const currentVal = editValue
+      const match = currentVal.match(/([A-Za-z]+)$/)
+      if (match) {
+        const newVal = currentVal.substring(0, currentVal.length - match[1].length) + funcName + '('
+        setEditValue(newVal)
+      } else {
+        setEditValue(currentVal + funcName + '(')
+      }
+      setShowFormulaAutocomplete(false)
+    },
+    [editingCell, editValue, isSlashMode],
+  )
+
+  // Track formula autocomplete visibility
+  useEffect(() => {
+    if (!editingCell) {
+      setShowFormulaAutocomplete(false)
+      setIsSlashMode(false)
+      return
+    }
+
+    // Slash mode: "/" triggers function browser
+    if (editValue.startsWith('/')) {
+      setShowFormulaAutocomplete(true)
+      setIsSlashMode(true)
+      const cellEl = document.querySelector(`[data-cell="${editingCell.row}-${editingCell.col}"]`)
+      if (cellEl) {
+        const rect = cellEl.getBoundingClientRect()
+        setFormulaAnchorRect({ top: rect.bottom, left: rect.left })
+      }
+      return
+    }
+
+    // Equals mode: "=" triggers autocomplete
+    if (editValue.startsWith('=') && editValue.length > 1) {
+      const afterEq = editValue.substring(1)
+      const match = afterEq.match(/([A-Za-z]+)$/)
+      if (match && match[1].length >= 1) {
+        setShowFormulaAutocomplete(true)
+        setIsSlashMode(false)
+        const cellEl = document.querySelector(`[data-cell="${editingCell.row}-${editingCell.col}"]`)
+        if (cellEl) {
+          const rect = cellEl.getBoundingClientRect()
+          setFormulaAnchorRect({ top: rect.bottom, left: rect.left })
+        }
+        return
+      }
+    }
+
+    setShowFormulaAutocomplete(false)
+    setIsSlashMode(false)
+  }, [editValue, editingCell])
+
   if (!activeSheet) return null
 
   const currentCellKey = selectedCell ? `${selectedCell.row}-${selectedCell.col}` : null
@@ -870,13 +1139,42 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
           >
             <Redo2 size={16} />
           </button>
-          <button
-            onClick={handleExportCSV}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            title="CSVエクスポート"
-          >
-            <Download size={16} />
-          </button>
+          {/* Export dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu((v) => !v)}
+              className="h-8 px-2 flex items-center gap-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              title="エクスポート"
+            >
+              <Download size={16} />
+              <ChevronDownIcon size={12} />
+            </button>
+            {showExportMenu && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setShowExportMenu(false)} />
+                <div className="absolute top-full right-0 mt-1 z-40 bg-slate-800 border border-slate-700 rounded-lg py-1 shadow-xl w-36">
+                  <button
+                    onClick={() => { handleExportCSV(); setShowExportMenu(false) }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white"
+                  >
+                    CSV
+                  </button>
+                  <button
+                    onClick={handleExportHTML}
+                    className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white"
+                  >
+                    HTML
+                  </button>
+                  <button
+                    onClick={handleExportPDF}
+                    className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white"
+                  >
+                    PDF (印刷)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           {/* CSV Import */}
           <input ref={csvInputRef} type="file" accept=".csv,.tsv,.txt" onChange={handleCSVImport} className="hidden" />
           <button
@@ -885,6 +1183,22 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
             title="CSVインポート"
           >
             <Upload size={16} />
+          </button>
+          {/* PDF Import */}
+          <button
+            onClick={() => setPdfAiOpen(true)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+            title="PDF読み込み + AI処理"
+          >
+            <FileDown size={16} />
+          </button>
+          {/* Chart button */}
+          <button
+            onClick={() => setChartPanelOpen(true)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            title="グラフ作成"
+          >
+            <BarChart3 size={16} />
           </button>
           <button
             onClick={() => {
@@ -895,6 +1209,20 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
             title="検索 (Ctrl+F)"
           >
             <Search size={16} />
+          </button>
+          <button
+            onClick={() => setValidationDialogOpen(true)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            title="データ入力規則"
+          >
+            <ShieldCheck size={16} />
+          </button>
+          <button
+            onClick={() => setPrintPreviewOpen(true)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            title="印刷プレビュー"
+          >
+            <Printer size={16} />
           </button>
         </div>
       </div>
@@ -907,6 +1235,8 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
         currentCellFormat={currentCell?.format}
         onFormatChange={handleFormatChange}
         dispatch={dispatch}
+        onOpenChartPanel={() => setChartPanelOpen(true)}
+        onOpenPivot={() => setPivotOpen(true)}
       />
 
       {/* Formula bar */}
@@ -924,7 +1254,7 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
       />
 
       {/* Cell grid */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
         <CellGrid
           sheet={activeSheet}
           selectedCell={selectedCell}
@@ -940,7 +1270,83 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
           onCancelEdit={cancelEdit}
           onContextMenu={(x, y) => setContextMenu({ x, y })}
           dispatch={dispatch}
+          validationError={validationError}
+          onListSelect={handleListSelect}
+          cutRange={cutRange && cutRange.sheetId === activeSheet?.id ? cutRange.range : null}
         />
+
+        {/* Chart overlays */}
+        {charts.map((chart) => {
+          const chartData = (() => {
+            const { startRow, startCol, endRow, endCol } = chart.range
+            const labels: string[] = []
+            const datasets: { label: string; values: number[] }[] = []
+            const colCount = endCol - startCol + 1
+            if (colCount >= 2) {
+              const firstRowValues: string[] = []
+              for (let c = startCol; c <= endCol; c++) {
+                const val = computedValues[`${startRow}-${c}`]
+                firstRowValues.push(val !== undefined ? String(val) : '')
+              }
+              const hasHeaders = firstRowValues.some(
+                (v, i) => i > 0 && isNaN(Number(v)) && v !== '',
+              )
+              const dataStartRow = hasHeaders ? startRow + 1 : startRow
+              for (let r = dataStartRow; r <= endRow; r++) {
+                const val = computedValues[`${r}-${startCol}`]
+                labels.push(val !== undefined ? String(val) : `行${r + 1}`)
+              }
+              for (let c = startCol + 1; c <= endCol; c++) {
+                const seriesLabel = hasHeaders
+                  ? firstRowValues[c - startCol]
+                  : colIndexToLetter(c)
+                const values: number[] = []
+                for (let r = dataStartRow; r <= endRow; r++) {
+                  const val = computedValues[`${r}-${c}`]
+                  values.push(
+                    typeof val === 'number' ? val : parseFloat(String(val)) || 0,
+                  )
+                }
+                datasets.push({ label: seriesLabel, values })
+              }
+            } else {
+              const values: number[] = []
+              for (let r = startRow; r <= endRow; r++) {
+                labels.push(`行${r + 1}`)
+                const val = computedValues[`${r}-${startCol}`]
+                values.push(
+                  typeof val === 'number' ? val : parseFloat(String(val)) || 0,
+                )
+              }
+              datasets.push({ label: colIndexToLetter(startCol), values })
+            }
+            return { labels, datasets }
+          })()
+          const svg = renderChartSVG(chart.chartType, chartData, chart.title)
+          return (
+            <div
+              key={chart.id}
+              className="absolute bg-slate-900/95 border border-slate-700 rounded-lg shadow-xl overflow-hidden"
+              style={{ left: chart.x, top: chart.y, width: 360, height: 240 }}
+            >
+              <div className="flex items-center justify-between px-3 py-1.5 bg-slate-800/80 cursor-move">
+                <span className="text-xs text-slate-300 font-medium truncate">
+                  {chart.title}
+                </span>
+                <button
+                  onClick={() => handleRemoveChart(chart.id)}
+                  className="text-slate-500 hover:text-red-400 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div
+                className="p-2 h-[calc(100%-32px)]"
+                dangerouslySetInnerHTML={{ __html: svg }}
+              />
+            </div>
+          )
+        })}
       </div>
 
       {/* Status bar */}
@@ -1001,10 +1407,159 @@ export default function SpreadsheetEditor({ initialDoc }: Props) {
           normalizedRange={normalizedRange}
           activeSheet={activeSheet}
           clipboardRef={clipboardRef}
+          computedValues={computedValues}
           dispatch={dispatch}
           onClose={() => setContextMenu(null)}
+          onCut={(range) => setCutRange({ sheetId: activeSheet.id, range })}
         />
       )}
+
+      {/* Data Validation dialog */}
+      {validationDialogOpen && normalizedRange && (
+        <DataValidationDialog
+          existing={activeSheet.dataValidation?.[`${normalizedRange.startRow}-${normalizedRange.startCol}`]}
+          onApply={(validation: DataValidation) => {
+            dispatch({
+              type: 'SET_DATA_VALIDATION',
+              sheetId: activeSheet.id,
+              startRow: normalizedRange.startRow,
+              startCol: normalizedRange.startCol,
+              endRow: normalizedRange.endRow,
+              endCol: normalizedRange.endCol,
+              validation,
+            })
+            setValidationDialogOpen(false)
+          }}
+          onRemove={() => {
+            dispatch({
+              type: 'REMOVE_DATA_VALIDATION',
+              sheetId: activeSheet.id,
+              startRow: normalizedRange.startRow,
+              startCol: normalizedRange.startCol,
+              endRow: normalizedRange.endRow,
+              endCol: normalizedRange.endCol,
+            })
+            setValidationDialogOpen(false)
+          }}
+          onClose={() => setValidationDialogOpen(false)}
+        />
+      )}
+
+      {/* Print Preview */}
+      {printPreviewOpen && (
+        <PrintPreview
+          sheet={activeSheet}
+          computedValues={computedValues}
+          onClose={() => setPrintPreviewOpen(false)}
+        />
+      )}
+
+      {/* Chart panel */}
+      {chartPanelOpen && (
+        <ChartPanel
+          sheet={activeSheet}
+          selectionRange={normalizedRange}
+          onAddChart={handleAddChart}
+          onClose={() => setChartPanelOpen(false)}
+        />
+      )}
+
+      {/* Formula autocomplete */}
+      <FormulaAutocomplete
+        editValue={editValue}
+        onSelect={handleFormulaSelect}
+        visible={showFormulaAutocomplete && !!editingCell}
+        anchorRect={formulaAnchorRect}
+        slashMode={isSlashMode}
+      />
+
+      {/* Pivot table dialog */}
+      {pivotOpen && activeSheet && (
+        <PivotTableDialog
+          sheet={activeSheet}
+          selectionRange={normalizedRange}
+          computedValues={computedValues}
+          onInsertPivot={(result: PivotResult) => {
+            // Create a new sheet with pivot data
+            dispatch({ type: 'ADD_SHEET' })
+            // The new sheet becomes active; populate it after a tick
+            setTimeout(() => {
+              // Find the newly added sheet (last one)
+              const sheets = state.sheets
+              const newSheet = sheets[sheets.length - 1]
+              if (!newSheet) return
+              // Rename it
+              dispatch({ type: 'RENAME_SHEET', id: newSheet.id, name: 'ピボット' })
+              // Write headers
+              result.headers.forEach((h, ci) => {
+                dispatch({
+                  type: 'SET_CELL_VALUE',
+                  sheetId: newSheet.id,
+                  row: 0,
+                  col: ci,
+                  value: h,
+                })
+              })
+              // Write rows
+              result.rows.forEach((row, ri) => {
+                row.forEach((val, ci) => {
+                  dispatch({
+                    type: 'SET_CELL_VALUE',
+                    sheetId: newSheet.id,
+                    row: ri + 1,
+                    col: ci,
+                    value: val,
+                  })
+                })
+              })
+              // Make bold headers
+              result.headers.forEach((_h, ci) => {
+                dispatch({
+                  type: 'SET_CELL_FORMAT',
+                  sheetId: newSheet.id,
+                  row: 0,
+                  col: ci,
+                  format: { bold: true },
+                })
+              })
+            }, 200)
+          }}
+          onClose={() => setPivotOpen(false)}
+        />
+      )}
+
+      {/* Shortcuts help */}
+      <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} context="spreadsheet" />
+
+      {/* PDF AI panel */}
+      <PdfAiPanel
+        open={pdfAiOpen}
+        onClose={() => setPdfAiOpen(false)}
+        context="spreadsheet"
+        onInsertSpreadsheet={(cells, rowCount, colCount, title) => {
+          dispatch({ type: 'SET_TITLE', title })
+          // Insert cells into the active sheet
+          Object.entries(cells).forEach(([key, cell]) => {
+            const [r, c] = key.split('-').map(Number)
+            dispatch({
+              type: 'SET_CELL_VALUE',
+              sheetId: activeSheet.id,
+              row: r,
+              col: c,
+              value: cell.value,
+            })
+            if (cell.format) {
+              dispatch({
+                type: 'SET_CELL_FORMAT',
+                sheetId: activeSheet.id,
+                row: r,
+                col: c,
+                format: cell.format,
+              })
+            }
+          })
+        }}
+      />
     </div>
   )
 }

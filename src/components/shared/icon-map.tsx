@@ -11,6 +11,11 @@ import {
   ClipboardList,
   Calendar,
   File,
+  Mail,
+  User,
+  Shield,
+  Megaphone,
+  HelpCircle,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -26,6 +31,11 @@ const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: 
   clipboardList: ClipboardList,
   calendar: Calendar,
   file: File,
+  mail: Mail,
+  user: User,
+  shield: Shield,
+  megaphone: Megaphone,
+  helpCircle: HelpCircle,
 }
 
 export default function IconFromKey({
