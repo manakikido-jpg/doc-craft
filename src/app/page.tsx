@@ -1,9 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/lib/auth-context'
 import {
   FileText,
   Presentation,
@@ -22,15 +21,8 @@ import {
 } from 'lucide-react'
 
 export default function LandingPage() {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
-  const router = useRouter()
-
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setIsLoggedIn(!!user)
-    })
-  }, [])
+  const { user, isGuest } = useAuth()
+  const isLoggedIn = !!user || isGuest
 
   return (
     <div className="min-h-screen bg-slate-950 text-white overflow-x-hidden">
@@ -83,22 +75,24 @@ export default function LandingPage() {
         <div className="relative max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-medium mb-8">
             <Sparkles size={12} />
-            AI搭載の次世代ドキュメントツール
+            スタートアップのための統合ドキュメントツール
           </div>
 
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.1] mb-6">
-            すべての資料を
+            チームの生産性を
+            <br />
+            最大化する
             <br />
             <span className="bg-gradient-to-r from-indigo-400 via-violet-400 to-cyan-400 bg-clip-text text-transparent">
-              ひとつのツール
+              ドキュメント基盤
             </span>
-            で。
+            。
           </h1>
 
           <p className="text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            ドキュメント、スライド、スプレッドシート。
+            投資家向けピッチ、KPI管理、議事録。
             <br className="hidden sm:block" />
-            3つのツールをひとつに統合。AIが資料作成をアシストします。
+            スタートアップに必要な3つのツールを統合。AIアシスタント付き。
           </p>
 
           <div className="flex items-center justify-center gap-4 mb-16">
@@ -137,6 +131,13 @@ export default function LandingPage() {
               features={['65+関数', 'グラフ作成', 'CSV/PDF出力']}
             />
           </div>
+
+          {/* Trust signals */}
+          <div className="flex items-center justify-center gap-8 mt-10 bg-slate-900/40 rounded-xl py-3 max-w-2xl mx-auto">
+            <span className="text-sm text-slate-400">🚀 導入5分</span>
+            <span className="text-sm text-slate-400">💰 無料プラン</span>
+            <span className="text-sm text-slate-400">🔒 セキュア認証</span>
+          </div>
         </div>
       </section>
 
@@ -146,11 +147,12 @@ export default function LandingPage() {
         <div className="relative max-w-6xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">
-              必要なものが、
-              <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">すべて揃う</span>
+              スタートアップに必要な
+              <br />
+              <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">すべてが揃う</span>
             </h2>
             <p className="text-slate-400 text-lg max-w-xl mx-auto">
-              資料作成に必要な機能をワンストップで提供
+              少人数チームの生産性を最大化するツールセット
             </p>
           </div>
 
@@ -209,6 +211,38 @@ export default function LandingPage() {
               description="作成した資料はクラウドに自動保存。どこからでもアクセス・編集が可能。"
               color="text-sky-400"
             />
+          </div>
+        </div>
+      </section>
+
+      {/* Use Cases Section */}
+      <section className="py-24 px-6 relative">
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-violet-950/10 to-transparent pointer-events-none" />
+        <div className="relative max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">
+              <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">活用シーン</span>
+            </h2>
+            <p className="text-slate-400 text-lg max-w-xl mx-auto">
+              スタートアップの日常業務をカバー
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
+            <div className="group p-8 rounded-2xl border border-slate-800 bg-slate-900/40 hover:border-slate-700 hover:bg-slate-900/60 transition-all duration-300 text-center">
+              <div className="text-4xl mb-4">📊</div>
+              <h3 className="font-bold text-white text-lg mb-2">投資家ピッチ</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">AIでピッチデッキを自動生成。KPIダッシュボードと連携。</p>
+            </div>
+            <div className="group p-8 rounded-2xl border border-slate-800 bg-slate-900/40 hover:border-slate-700 hover:bg-slate-900/60 transition-all duration-300 text-center">
+              <div className="text-4xl mb-4">📝</div>
+              <h3 className="font-bold text-white text-lg mb-2">チーム議事録</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">会議内容をAIで構造化。アクションアイテムを自動抽出。</p>
+            </div>
+            <div className="group p-8 rounded-2xl border border-slate-800 bg-slate-900/40 hover:border-slate-700 hover:bg-slate-900/60 transition-all duration-300 text-center">
+              <div className="text-4xl mb-4">📈</div>
+              <h3 className="font-bold text-white text-lg mb-2">KPI管理</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">チームのKPIを表計算で管理。グラフで可視化。</p>
+            </div>
           </div>
         </div>
       </section>
@@ -272,10 +306,12 @@ export default function LandingPage() {
         </div>
         <div className="relative max-w-2xl mx-auto text-center">
           <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">
-            今すぐ始めよう
+            チームの資料作成を
+            <br />
+            今すぐ効率化
           </h2>
           <p className="text-slate-400 text-lg mb-8">
-            無料でアカウントを作成して、すべての機能を使い始めましょう。
+            無料アカウントを作成して、チーム全員で使い始めましょう。
           </p>
           <Link
             href={isLoggedIn ? '/dashboard' : '/signup'}
@@ -295,7 +331,11 @@ export default function LandingPage() {
             </div>
             <span className="text-sm font-semibold text-slate-400">DocCraft</span>
           </div>
-          <p className="text-xs text-slate-600">Built with Next.js & Supabase</p>
+          <div className="flex items-center gap-6">
+            <a href="#" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">プライバシー</a>
+            <a href="#" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">利用規約</a>
+            <a href="#" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">お問い合わせ</a>
+          </div>
         </div>
       </footer>
     </div>

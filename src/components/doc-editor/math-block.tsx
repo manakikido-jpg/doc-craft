@@ -11,64 +11,96 @@ interface Props {
 function renderMath(expr: string): string {
   if (!expr.trim()) return '<span style="color:#64748b;font-style:italic">数式を入力...</span>'
 
-  const html = expr
-    // Fractions: \frac{a}{b}
-    .replace(
-      /\\frac\{([^}]*)\}\{([^}]*)\}/g,
-      '<span style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle"><span style="border-bottom:1px solid currentColor;padding:0 4px">$1</span><span style="padding:0 4px">$2</span></span>',
-    )
-    // Square root: \sqrt{x}
-    .replace(/\\sqrt\{([^}]*)\}/g, '√<span style="text-decoration:overline;padding:0 2px">$1</span>')
-    // Superscript: ^{x} or ^x
-    .replace(/\^\{([^}]*)\}/g, '<sup>$1</sup>')
-    .replace(/\^(\w)/g, '<sup>$1</sup>')
-    // Subscript: _{x} or _x
-    .replace(/_\{([^}]*)\}/g, '<sub>$1</sub>')
-    .replace(/_(\w)/g, '<sub>$1</sub>')
-    // Sum, product, integral
-    .replace(/\\sum/g, '∑')
-    .replace(/\\prod/g, '∏')
-    .replace(/\\int/g, '∫')
-    .replace(/\\infty/g, '∞')
-    // Greek letters
-    .replace(/\\alpha/g, 'α')
-    .replace(/\\beta/g, 'β')
-    .replace(/\\gamma/g, 'γ')
-    .replace(/\\delta/g, 'δ')
-    .replace(/\\epsilon/g, 'ε')
-    .replace(/\\theta/g, 'θ')
-    .replace(/\\lambda/g, 'λ')
-    .replace(/\\mu/g, 'μ')
-    .replace(/\\pi/g, 'π')
-    .replace(/\\sigma/g, 'σ')
-    .replace(/\\omega/g, 'ω')
-    .replace(/\\phi/g, 'φ')
-    .replace(/\\Delta/g, 'Δ')
-    .replace(/\\Sigma/g, 'Σ')
-    .replace(/\\Omega/g, 'Ω')
-    .replace(/\\Pi/g, 'Π')
-    .replace(/\\Phi/g, 'Φ')
-    // Operators
-    .replace(/\\times/g, '×')
-    .replace(/\\div/g, '÷')
-    .replace(/\\pm/g, '±')
-    .replace(/\\leq/g, '≤')
-    .replace(/\\geq/g, '≥')
-    .replace(/\\neq/g, '≠')
-    .replace(/\\approx/g, '≈')
-    .replace(/\\cdot/g, '·')
-    // Arrows
-    .replace(/\\rightarrow/g, '→')
-    .replace(/\\leftarrow/g, '←')
-    .replace(/\\Rightarrow/g, '⇒')
-    .replace(/\\Leftarrow/g, '⇐')
-    // Misc
-    .replace(/\\partial/g, '∂')
-    .replace(/\\nabla/g, '∇')
-    .replace(/\\forall/g, '∀')
-    .replace(/\\exists/g, '∃')
-    .replace(/\\in/g, '∈')
-    .replace(/\\notin/g, '∉')
+  let html = expr
+
+  // Matrices: \begin{pmatrix}...\end{pmatrix}, \begin{bmatrix}...\end{bmatrix}
+  html = html.replace(
+    /\\begin\{(pmatrix|bmatrix|matrix)\}([\s\S]*?)\\end\{\1\}/g,
+    (_match, type: string, body: string) => {
+      const leftBracket = type === 'pmatrix' ? '(' : type === 'bmatrix' ? '[' : ''
+      const rightBracket = type === 'pmatrix' ? ')' : type === 'bmatrix' ? ']' : ''
+      const rows = body.split('\\\\').map(r => r.trim()).filter(r => r.length > 0)
+      const cellsHtml = rows.map(row => {
+        const cols = row.split('&').map(c => c.trim())
+        return '<div style="display:flex;gap:12px;justify-content:center">' +
+          cols.map(c => `<span style="min-width:20px;text-align:center">${c}</span>`).join('') +
+          '</div>'
+      }).join('')
+      return `<span style="display:inline-flex;align-items:center;vertical-align:middle;gap:2px"><span style="font-size:1.5em;font-weight:100">${leftBracket}</span><span style="display:inline-flex;flex-direction:column;gap:2px;padding:4px 0">${cellsHtml}</span><span style="font-size:1.5em;font-weight:100">${rightBracket}</span></span>`
+    },
+  )
+
+  // Sum/Product with limits: \sum_{lower}^{upper} or \prod_{lower}^{upper}
+  html = html.replace(
+    /\\(sum|prod)_\{([^}]*)\}\^\{([^}]*)\}/g,
+    (_match, op: string, lower: string, upper: string) => {
+      const symbol = op === 'sum' ? '∑' : '∏'
+      return `<span style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 2px"><span style="font-size:0.6em;line-height:1">${upper}</span><span style="font-size:1.4em;line-height:1">${symbol}</span><span style="font-size:0.6em;line-height:1">${lower}</span></span>`
+    },
+  )
+
+  // Fractions: \frac{a}{b}
+  html = html.replace(
+    /\\frac\{([^}]*)\}\{([^}]*)\}/g,
+    '<span style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle"><span style="border-bottom:1px solid currentColor;padding:0 4px">$1</span><span style="padding:0 4px">$2</span></span>',
+  )
+
+  // Square root: \sqrt{x}
+  html = html.replace(
+    /\\sqrt\{([^}]*)\}/g,
+    '<span style="display:inline-flex;align-items:center;vertical-align:middle"><span style="font-size:1.1em;margin-right:1px">&#8730;</span><span style="border-top:1px solid currentColor;padding:0 3px 0 2px">$1</span></span>',
+  )
+
+  // Superscript: ^{x} or ^x
+  html = html.replace(/\^\{([^}]*)\}/g, '<sup>$1</sup>')
+  html = html.replace(/\^(\w)/g, '<sup>$1</sup>')
+  // Subscript: _{x,y} or _{x} or _x (handles comma-separated nested subscripts)
+  html = html.replace(/_\{([^}]*)\}/g, '<sub>$1</sub>')
+  html = html.replace(/_(\w)/g, '<sub>$1</sub>')
+  // Sum, product, integral (standalone without limits)
+  html = html.replace(/\\sum/g, '∑')
+  html = html.replace(/\\prod/g, '∏')
+  html = html.replace(/\\int/g, '∫')
+  html = html.replace(/\\infty/g, '∞')
+  // Greek letters
+  html = html.replace(/\\alpha/g, 'α')
+  html = html.replace(/\\beta/g, 'β')
+  html = html.replace(/\\gamma/g, 'γ')
+  html = html.replace(/\\delta/g, 'δ')
+  html = html.replace(/\\epsilon/g, 'ε')
+  html = html.replace(/\\theta/g, 'θ')
+  html = html.replace(/\\lambda/g, 'λ')
+  html = html.replace(/\\mu/g, 'μ')
+  html = html.replace(/\\pi/g, 'π')
+  html = html.replace(/\\sigma/g, 'σ')
+  html = html.replace(/\\omega/g, 'ω')
+  html = html.replace(/\\phi/g, 'φ')
+  html = html.replace(/\\Delta/g, 'Δ')
+  html = html.replace(/\\Sigma/g, 'Σ')
+  html = html.replace(/\\Omega/g, 'Ω')
+  html = html.replace(/\\Pi/g, 'Π')
+  html = html.replace(/\\Phi/g, 'Φ')
+  // Operators
+  html = html.replace(/\\times/g, '×')
+  html = html.replace(/\\div/g, '÷')
+  html = html.replace(/\\pm/g, '±')
+  html = html.replace(/\\leq/g, '≤')
+  html = html.replace(/\\geq/g, '≥')
+  html = html.replace(/\\neq/g, '≠')
+  html = html.replace(/\\approx/g, '≈')
+  html = html.replace(/\\cdot/g, '·')
+  // Arrows
+  html = html.replace(/\\rightarrow/g, '→')
+  html = html.replace(/\\leftarrow/g, '←')
+  html = html.replace(/\\Rightarrow/g, '⇒')
+  html = html.replace(/\\Leftarrow/g, '⇐')
+  // Misc
+  html = html.replace(/\\partial/g, '∂')
+  html = html.replace(/\\nabla/g, '∇')
+  html = html.replace(/\\forall/g, '∀')
+  html = html.replace(/\\exists/g, '∃')
+  html = html.replace(/\\in/g, '∈')
+  html = html.replace(/\\notin/g, '∉')
 
   return html
 }

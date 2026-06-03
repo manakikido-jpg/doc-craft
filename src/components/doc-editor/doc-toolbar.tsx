@@ -29,16 +29,26 @@ import {
   ChevronDown,
   SpellCheck,
   LayoutTemplate,
+  Clock,
+  GitCompare,
+  MailIcon,
+  FolderOpen,
+  Focus,
+  Hash,
 } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { useTheme } from '@/lib/theme-context'
+import PresenceAvatars from '../shared/presence-avatars'
 
 interface Props {
   state: DocDocument
+  saveStatus?: 'saved' | 'saving' | 'error'
   onTitleChange: (title: string) => void
   onExport: () => void
   onExportPDF?: () => void
   onExportDOCX?: () => void
+  onExportMarkdown?: () => void
+  onExportText?: () => void
   onPrint?: () => void
   onAI: () => void
   onDelete: () => void
@@ -50,6 +60,7 @@ interface Props {
   onSaveVersion?: () => void
   onShare?: () => void
   onVersions?: () => void
+  onVersionHistory?: () => void
   onShortcuts?: () => void
   onFindReplace?: () => void
   onPageSettings?: () => void
@@ -62,14 +73,26 @@ interface Props {
   onBookmarks?: () => void
   onProofread?: () => void
   onPdfImport?: () => void
+  onAiTextTools?: () => void
+  onTrackChanges?: () => void
+  onCompare?: () => void
+  onMailMerge?: () => void
+  onTemplates?: () => void
+  focusMode?: boolean
+  onFocusMode?: () => void
+  showLineNumbers?: boolean
+  onToggleLineNumbers?: () => void
 }
 
 export default function DocToolbar({
   state,
+  saveStatus,
   onTitleChange,
   onExport,
   onExportPDF,
   onExportDOCX,
+  onExportMarkdown,
+  onExportText,
   onPrint,
   onAI,
   onDelete,
@@ -81,6 +104,7 @@ export default function DocToolbar({
   onSaveVersion,
   onShare,
   onVersions,
+  onVersionHistory,
   onShortcuts,
   onFindReplace,
   onPageSettings,
@@ -93,6 +117,15 @@ export default function DocToolbar({
   onBookmarks,
   onProofread,
   onPdfImport,
+  onAiTextTools,
+  onTrackChanges,
+  onCompare,
+  onMailMerge,
+  onTemplates,
+  focusMode,
+  onFocusMode,
+  showLineNumbers,
+  onToggleLineNumbers,
 }: Props) {
   const commentCount = (state.comments || []).filter((c) => !c.resolved && !c.parentId).length
   const { theme, toggleTheme } = useTheme()
@@ -131,7 +164,7 @@ export default function DocToolbar({
         placeholder={t('editor.untitledDoc')}
       />
 
-      <div className="flex items-center gap-1.5 flex-shrink-0">
+      <div className="flex items-center gap-1.5 flex-shrink-0 overflow-x-auto max-md:max-w-[60vw] scrollbar-none">
         {onUndo && (
           <div className="flex items-center gap-0.5">
             <button
@@ -155,7 +188,17 @@ export default function DocToolbar({
           </div>
         )}
 
-        <span className="text-slate-500 text-xs hidden lg:block">{t('editor.autoSaved')}</span>
+        <span className={`text-xs hidden lg:block transition-colors ${
+          saveStatus === 'saving' ? 'text-yellow-400' :
+          saveStatus === 'error' ? 'text-red-400' :
+          'text-green-400'
+        }`}>
+          {saveStatus === 'saving' ? '保存中...' :
+           saveStatus === 'error' ? '保存エラー' :
+           '✓ 保存済み'}
+        </span>
+
+        <PresenceAvatars documentId={state.meta.id} />
 
         <div className="w-px h-5 bg-slate-800" />
 
@@ -178,6 +221,17 @@ export default function DocToolbar({
             aria-label="バージョン履歴"
           >
             <History size={14} />
+          </button>
+        )}
+
+        {onVersionHistory && (
+          <button
+            onClick={onVersionHistory}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            title="自動バージョン履歴"
+            aria-label="自動バージョン履歴"
+          >
+            <Clock size={14} />
           </button>
         )}
 
@@ -311,6 +365,80 @@ export default function DocToolbar({
           </button>
         )}
 
+        {onTrackChanges && (
+          <button
+            onClick={onTrackChanges}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            title="変更履歴"
+            aria-label="変更履歴"
+          >
+            <GitCompare size={14} />
+          </button>
+        )}
+
+        {onCompare && (
+          <button
+            onClick={onCompare}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            title="文書の比較"
+            aria-label="文書の比較"
+          >
+            <span className="text-[10px] font-bold">⇔</span>
+          </button>
+        )}
+
+        {onMailMerge && (
+          <button
+            onClick={onMailMerge}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            title="差し込み印刷"
+            aria-label="差し込み印刷"
+          >
+            <MailIcon size={14} />
+          </button>
+        )}
+
+        {onTemplates && (
+          <button
+            onClick={onTemplates}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            title="テンプレート"
+            aria-label="テンプレート"
+          >
+            <FolderOpen size={14} />
+          </button>
+        )}
+
+        {onToggleLineNumbers && (
+          <button
+            onClick={onToggleLineNumbers}
+            className={`w-7 h-7 flex items-center justify-center rounded border transition-colors ${
+              showLineNumbers
+                ? 'border-indigo-500 bg-indigo-500/20 text-indigo-400'
+                : 'border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white'
+            }`}
+            title="行番号表示"
+            aria-label="行番号表示"
+          >
+            <Hash size={14} />
+          </button>
+        )}
+
+        {onFocusMode && (
+          <button
+            onClick={onFocusMode}
+            className={`w-7 h-7 flex items-center justify-center rounded border transition-colors ${
+              focusMode
+                ? 'border-indigo-500 bg-indigo-500/20 text-indigo-400'
+                : 'border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white'
+            }`}
+            title="フォーカスモード (Ctrl+Shift+F)"
+            aria-label="フォーカスモード"
+          >
+            <Focus size={14} />
+          </button>
+        )}
+
         <button
           onClick={toggleTheme}
           className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors"
@@ -350,6 +478,16 @@ export default function DocToolbar({
           </button>
         )}
 
+        {onAiTextTools && (
+          <button
+            onClick={onAiTextTools}
+            className="flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 hover:border-indigo-500 bg-slate-800 hover:bg-indigo-500/10 text-slate-300 hover:text-indigo-400 text-xs transition-all active:scale-95"
+            title="AIテキストツール"
+          >
+            <Sparkles size={13} /> <span className="max-md:hidden">AIツール</span>
+          </button>
+        )}
+
         <div className="relative" ref={exportRef}>
           <button
             onClick={() => setExportOpen(!exportOpen)}
@@ -382,6 +520,22 @@ export default function DocToolbar({
                   className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
                 >
                   Word (.docx)
+                </button>
+              )}
+              {onExportMarkdown && (
+                <button
+                  onClick={() => { onExportMarkdown(); setExportOpen(false) }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                >
+                  Markdown (.md)
+                </button>
+              )}
+              {onExportText && (
+                <button
+                  onClick={() => { onExportText(); setExportOpen(false) }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                >
+                  テキスト (.txt)
                 </button>
               )}
             </div>

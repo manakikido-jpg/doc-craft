@@ -16,7 +16,7 @@ import {
   ListChecks,
   BarChart3,
 } from 'lucide-react'
-import { extractPDFInfo } from '@/lib/pdf-extract'
+import { extractPDFInfo } from '@/lib/import/pdf-extract'
 import {
   summarizeContentToDoc,
   summarizeContentToSlides,

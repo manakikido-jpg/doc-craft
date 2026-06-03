@@ -9,6 +9,59 @@ interface FormulaInfo {
   category: string
 }
 
+/** Parameter signature info for tooltip hints */
+interface FunctionSignature {
+  params: { name: string; optional?: boolean }[]
+  description: string
+}
+
+/** Comprehensive function signatures map for parameter hints (30+ functions) */
+export const FUNCTION_SIGNATURES: Record<string, FunctionSignature> = {
+  SUM: { params: [{ name: 'range' }], description: '合計を計算' },
+  AVERAGE: { params: [{ name: 'range' }], description: '平均を計算' },
+  COUNT: { params: [{ name: 'range' }], description: '数値セルの個数' },
+  MAX: { params: [{ name: 'range' }], description: '最大値' },
+  MIN: { params: [{ name: 'range' }], description: '最小値' },
+  IF: { params: [{ name: 'condition' }, { name: 'true_value' }, { name: 'false_value', optional: true }], description: '条件分岐' },
+  IFERROR: { params: [{ name: 'value' }, { name: 'error_value' }], description: 'エラー時の代替値' },
+  VLOOKUP: { params: [{ name: 'lookup_value' }, { name: 'range' }, { name: 'col_index' }, { name: 'approx', optional: true }], description: '垂直方向の検索' },
+  HLOOKUP: { params: [{ name: 'lookup_value' }, { name: 'range' }, { name: 'row_index' }, { name: 'approx', optional: true }], description: '水平方向の検索' },
+  XLOOKUP: { params: [{ name: 'lookup_value' }, { name: 'lookup_array' }, { name: 'return_array' }, { name: 'if_not_found', optional: true }, { name: 'match_mode', optional: true }, { name: 'search_mode', optional: true }], description: '高度な検索' },
+  INDEX: { params: [{ name: 'range' }, { name: 'row_num' }, { name: 'col_num', optional: true }], description: '行列から値を取得' },
+  MATCH: { params: [{ name: 'lookup_value' }, { name: 'lookup_range' }, { name: 'match_type', optional: true }], description: '位置を検索' },
+  ROUND: { params: [{ name: 'number' }, { name: 'decimals' }], description: '四捨五入' },
+  ROUNDUP: { params: [{ name: 'number' }, { name: 'decimals' }], description: '切り上げ' },
+  ROUNDDOWN: { params: [{ name: 'number' }, { name: 'decimals' }], description: '切り捨て' },
+  ABS: { params: [{ name: 'number' }], description: '絶対値' },
+  SQRT: { params: [{ name: 'number' }], description: '平方根' },
+  POWER: { params: [{ name: 'base' }, { name: 'exponent' }], description: 'べき乗' },
+  MOD: { params: [{ name: 'number' }, { name: 'divisor' }], description: '余り' },
+  CONCAT: { params: [{ name: 'text1' }, { name: 'text2' }, { name: '...', optional: true }], description: '文字列を結合' },
+  LEN: { params: [{ name: 'text' }], description: '文字数' },
+  LEFT: { params: [{ name: 'text' }, { name: 'num_chars', optional: true }], description: '左から文字を取得' },
+  RIGHT: { params: [{ name: 'text' }, { name: 'num_chars', optional: true }], description: '右から文字を取得' },
+  MID: { params: [{ name: 'text' }, { name: 'start_num' }, { name: 'num_chars' }], description: '中間の文字を取得' },
+  FIND: { params: [{ name: 'find_text' }, { name: 'within_text' }, { name: 'start_num', optional: true }], description: '文字の位置を検索' },
+  SUBSTITUTE: { params: [{ name: 'text' }, { name: 'old_text' }, { name: 'new_text' }, { name: 'instance', optional: true }], description: '文字を置換' },
+  SUMIF: { params: [{ name: 'criteria_range' }, { name: 'criteria' }, { name: 'sum_range', optional: true }], description: '条件付き合計' },
+  COUNTIF: { params: [{ name: 'range' }, { name: 'criteria' }], description: '条件付きカウント' },
+  AVERAGEIF: { params: [{ name: 'criteria_range' }, { name: 'criteria' }, { name: 'avg_range', optional: true }], description: '条件付き平均' },
+  SUMIFS: { params: [{ name: 'sum_range' }, { name: 'criteria_range1' }, { name: 'criteria1' }, { name: '...', optional: true }], description: '複数条件の合計' },
+  DATE: { params: [{ name: 'year' }, { name: 'month' }, { name: 'day' }], description: '日付を作成' },
+  DATEDIF: { params: [{ name: 'start_date' }, { name: 'end_date' }, { name: 'unit' }], description: '日付の差' },
+  TEXTJOIN: { params: [{ name: 'delimiter' }, { name: 'ignore_empty' }, { name: 'text1' }, { name: '...', optional: true }], description: '区切り文字で結合' },
+  FILTER: { params: [{ name: 'range' }, { name: 'criteria_range' }, { name: 'criteria' }], description: '条件に合う行を抽出' },
+  UNIQUE: { params: [{ name: 'range' }], description: '一意の値を抽出' },
+  SORT: { params: [{ name: 'range' }, { name: 'sort_index', optional: true }, { name: 'sort_order', optional: true }], description: '値を並べ替え' },
+  SORTBY: { params: [{ name: 'range' }, { name: 'by_range' }, { name: 'order', optional: true }], description: '別範囲で並べ替え' },
+  SEQUENCE: { params: [{ name: 'rows' }, { name: 'cols', optional: true }, { name: 'start', optional: true }, { name: 'step', optional: true }], description: '連番を生成' },
+  LET: { params: [{ name: 'name1' }, { name: 'value1' }, { name: '...', optional: true }, { name: 'calculation' }], description: '名前付き中間結果' },
+  IFS: { params: [{ name: 'condition1' }, { name: 'value1' }, { name: '...', optional: true }], description: '複数条件分岐' },
+  SWITCH: { params: [{ name: 'expression' }, { name: 'value1' }, { name: 'result1' }, { name: '...', optional: true }], description: '値に応じた結果' },
+  LOG: { params: [{ name: 'number' }, { name: 'base', optional: true }], description: '対数' },
+  RANDBETWEEN: { params: [{ name: 'low' }, { name: 'high' }], description: '範囲内の乱数' },
+}
+
 const FORMULA_LIST: FormulaInfo[] = [
   // Math
   { name: 'SUM', description: '合計を計算', syntax: 'SUM(範囲)', category: '数学' },
@@ -32,6 +85,25 @@ const FORMULA_LIST: FormulaInfo[] = [
   { name: 'LOG', description: '対数', syntax: 'LOG(数値, 底)', category: '数学' },
   { name: 'LN', description: '自然対数', syntax: 'LN(数値)', category: '数学' },
   { name: 'EXP', description: 'eのべき乗', syntax: 'EXP(数値)', category: '数学' },
+  { name: 'PRODUCT', description: '範囲の積', syntax: 'PRODUCT(範囲)', category: '数学' },
+  { name: 'SUMPRODUCT', description: '対応要素の積の合計', syntax: 'SUMPRODUCT(範囲1, 範囲2)', category: '数学' },
+  { name: 'LARGE', description: 'K番目の最大値', syntax: 'LARGE(範囲, K)', category: '数学' },
+  { name: 'SMALL', description: 'K番目の最小値', syntax: 'SMALL(範囲, K)', category: '数学' },
+  { name: 'RANK', description: '順位', syntax: 'RANK(数値, 範囲, 順序)', category: '数学' },
+  { name: 'SIGN', description: '符号（-1, 0, 1）', syntax: 'SIGN(数値)', category: '数学' },
+  { name: 'FACT', description: '階乗', syntax: 'FACT(数値)', category: '数学' },
+  { name: 'GCD', description: '最大公約数', syntax: 'GCD(数値1, 数値2)', category: '数学' },
+  { name: 'LCM', description: '最小公倍数', syntax: 'LCM(数値1, 数値2)', category: '数学' },
+  // Trigonometry
+  { name: 'SIN', description: '正弦', syntax: 'SIN(数値)', category: '数学' },
+  { name: 'COS', description: '余弦', syntax: 'COS(数値)', category: '数学' },
+  { name: 'TAN', description: '正接', syntax: 'TAN(数値)', category: '数学' },
+  { name: 'ASIN', description: '逆正弦', syntax: 'ASIN(数値)', category: '数学' },
+  { name: 'ACOS', description: '逆余弦', syntax: 'ACOS(数値)', category: '数学' },
+  { name: 'ATAN', description: '逆正接', syntax: 'ATAN(数値)', category: '数学' },
+  { name: 'ATAN2', description: '2引数の逆正接', syntax: 'ATAN2(X, Y)', category: '数学' },
+  { name: 'DEGREES', description: 'ラジアンを度に変換', syntax: 'DEGREES(ラジアン)', category: '数学' },
+  { name: 'RADIANS', description: '度をラジアンに変換', syntax: 'RADIANS(度)', category: '数学' },
   // String
   { name: 'CONCAT', description: '文字列を結合', syntax: 'CONCAT(文字列1, 文字列2, ...)', category: '文字列' },
   { name: 'CONCATENATE', description: '文字列を結合', syntax: 'CONCATENATE(文字列1, 文字列2, ...)', category: '文字列' },
@@ -48,6 +120,13 @@ const FORMULA_LIST: FormulaInfo[] = [
   { name: 'REPT', description: '文字列を繰り返し', syntax: 'REPT(文字列, 回数)', category: '文字列' },
   { name: 'TEXT', description: '値を文字列に変換', syntax: 'TEXT(値)', category: '文字列' },
   { name: 'VALUE', description: '文字列を数値に変換', syntax: 'VALUE(文字列)', category: '文字列' },
+  { name: 'SEARCH', description: '大文字小文字を区別しない検索', syntax: 'SEARCH(検索文字, 対象, 開始位置)', category: '文字列' },
+  { name: 'REPLACE', description: '位置指定で置換', syntax: 'REPLACE(文字列, 開始, 文字数, 新文字列)', category: '文字列' },
+  { name: 'EXACT', description: '大文字小文字を区別して比較', syntax: 'EXACT(文字列1, 文字列2)', category: '文字列' },
+  { name: 'CLEAN', description: '印刷不可文字を削除', syntax: 'CLEAN(文字列)', category: '文字列' },
+  { name: 'CODE', description: '先頭文字のコード', syntax: 'CODE(文字列)', category: '文字列' },
+  { name: 'CHAR', description: 'コードから文字', syntax: 'CHAR(数値)', category: '文字列' },
+  { name: 'TEXTJOIN', description: '区切り文字で結合', syntax: 'TEXTJOIN(区切り, 空白無視, 文字列1, ...)', category: '文字列' },
   // Logical
   { name: 'IF', description: '条件分岐', syntax: 'IF(条件, 真の値, 偽の値)', category: '論理' },
   { name: 'AND', description: 'すべての条件が真', syntax: 'AND(条件1, 条件2, ...)', category: '論理' },
@@ -59,6 +138,12 @@ const FORMULA_LIST: FormulaInfo[] = [
   { name: 'ISBLANK', description: '空白かどうか', syntax: 'ISBLANK(セル)', category: '論理' },
   { name: 'ISNUMBER', description: '数値かどうか', syntax: 'ISNUMBER(値)', category: '論理' },
   { name: 'ISTEXT', description: 'テキストかどうか', syntax: 'ISTEXT(値)', category: '論理' },
+  { name: 'IFS', description: '複数条件分岐', syntax: 'IFS(条件1, 値1, 条件2, 値2, ...)', category: '論理' },
+  { name: 'SWITCH', description: '値に応じた結果', syntax: 'SWITCH(式, 値1, 結果1, ...)', category: '論理' },
+  { name: 'CHOOSE', description: 'インデックスで選択', syntax: 'CHOOSE(番号, 値1, 値2, ...)', category: '論理' },
+  { name: 'ISEVEN', description: '偶数かどうか', syntax: 'ISEVEN(数値)', category: '論理' },
+  { name: 'ISODD', description: '奇数かどうか', syntax: 'ISODD(数値)', category: '論理' },
+  { name: 'ISERROR', description: 'エラーかどうか', syntax: 'ISERROR(値)', category: '論理' },
   // Date
   { name: 'TODAY', description: '今日の日付', syntax: 'TODAY()', category: '日付' },
   { name: 'NOW', description: '現在の日時', syntax: 'NOW()', category: '日付' },
@@ -66,9 +151,15 @@ const FORMULA_LIST: FormulaInfo[] = [
   { name: 'YEAR', description: '年を取得', syntax: 'YEAR(日付)', category: '日付' },
   { name: 'MONTH', description: '月を取得', syntax: 'MONTH(日付)', category: '日付' },
   { name: 'DAY', description: '日を取得', syntax: 'DAY(日付)', category: '日付' },
+  { name: 'DATEDIF', description: '日付の差', syntax: 'DATEDIF(開始, 終了, 単位)', category: '日付' },
+  { name: 'WEEKDAY', description: '曜日番号', syntax: 'WEEKDAY(日付, 種類)', category: '日付' },
+  { name: 'HOUR', description: '時を取得', syntax: 'HOUR(時刻)', category: '日付' },
+  { name: 'MINUTE', description: '分を取得', syntax: 'MINUTE(時刻)', category: '日付' },
+  { name: 'SECOND', description: '秒を取得', syntax: 'SECOND(時刻)', category: '日付' },
   // Lookup
   { name: 'VLOOKUP', description: '垂直方向の検索', syntax: 'VLOOKUP(検索値, 範囲, 列番号, 型)', category: '検索' },
   { name: 'HLOOKUP', description: '水平方向の検索', syntax: 'HLOOKUP(検索値, 範囲, 行番号, 型)', category: '検索' },
+  { name: 'XLOOKUP', description: '高度な検索', syntax: 'XLOOKUP(検索値, 検索範囲, 戻り範囲, [既定値], [一致モード], [検索モード])', category: '検索' },
   { name: 'INDEX', description: '行列から値を取得', syntax: 'INDEX(範囲, 行番号, 列番号)', category: '検索' },
   { name: 'MATCH', description: '位置を検索', syntax: 'MATCH(検索値, 範囲, 型)', category: '検索' },
   // Conditional Aggregates
@@ -76,11 +167,21 @@ const FORMULA_LIST: FormulaInfo[] = [
   { name: 'COUNTIF', description: '条件付きカウント', syntax: 'COUNTIF(範囲, 条件)', category: '条件集計' },
   { name: 'AVERAGEIF', description: '条件付き平均', syntax: 'AVERAGEIF(条件範囲, 条件, 平均範囲)', category: '条件集計' },
   { name: 'SUMIFS', description: '複数条件の合計', syntax: 'SUMIFS(合計範囲, 条件範囲1, 条件1, ...)', category: '条件集計' },
+  { name: 'COUNTIFS', description: '複数条件のカウント', syntax: 'COUNTIFS(条件範囲1, 条件1, ...)', category: '条件集計' },
+  { name: 'AVERAGEIFS', description: '複数条件の平均', syntax: 'AVERAGEIFS(平均範囲, 条件範囲1, 条件1, ...)', category: '条件集計' },
   // Statistical
   { name: 'MEDIAN', description: '中央値', syntax: 'MEDIAN(範囲)', category: '統計' },
   { name: 'STDEV', description: '標準偏差', syntax: 'STDEV(範囲)', category: '統計' },
   { name: 'VAR', description: '分散', syntax: 'VAR(範囲)', category: '統計' },
   { name: 'COUNTA', description: '空でないセルの個数', syntax: 'COUNTA(範囲)', category: '統計' },
+  // Dynamic Array
+  { name: 'FILTER', description: '条件に合う行を抽出', syntax: 'FILTER(範囲, 条件範囲, 条件)', category: '配列' },
+  { name: 'UNIQUE', description: '一意の値を抽出', syntax: 'UNIQUE(範囲)', category: '配列' },
+  { name: 'SORT', description: '値を並べ替え', syntax: 'SORT(範囲, [列番号], [順序])', category: '配列' },
+  { name: 'SORTBY', description: '別範囲で並べ替え', syntax: 'SORTBY(範囲, 基準範囲, [順序])', category: '配列' },
+  { name: 'SEQUENCE', description: '連番を生成', syntax: 'SEQUENCE(行数, [列数], [開始], [増分])', category: '配列' },
+  // Advanced
+  { name: 'LET', description: '名前付き中間結果', syntax: 'LET(名前1, 値1, ..., 計算式)', category: '高度' },
   // Utility
   { name: 'ROW', description: '行番号を返す', syntax: 'ROW()', category: 'ユーティリティ' },
   { name: 'COLUMN', description: '列番号を返す', syntax: 'COLUMN()', category: 'ユーティリティ' },
@@ -94,6 +195,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   '検索': 'text-violet-400',
   '条件集計': 'text-cyan-400',
   '統計': 'text-orange-400',
+  '配列': 'text-teal-400',
+  '高度': 'text-rose-400',
   'ユーティリティ': 'text-slate-400',
 }
 
@@ -105,6 +208,8 @@ const CATEGORY_BG: Record<string, string> = {
   '検索': 'bg-violet-500/10 text-violet-400 border-violet-500/20',
   '条件集計': 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
   '統計': 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+  '配列': 'bg-teal-500/10 text-teal-400 border-teal-500/20',
+  '高度': 'bg-rose-500/10 text-rose-400 border-rose-500/20',
   'ユーティリティ': 'bg-slate-500/10 text-slate-400 border-slate-500/20',
 }
 
@@ -117,9 +222,60 @@ interface Props {
   slashMode?: boolean
 }
 
+/**
+ * Detect the function context: which function the cursor is inside and which parameter index.
+ * Returns { funcName, paramIndex } or null if not inside a function call.
+ */
+function detectFunctionContext(value: string): { funcName: string; paramIndex: number } | null {
+  if (!value.startsWith('=')) return null
+  const expr = value.substring(1)
+
+  // Walk backwards from the end to find the innermost open function call
+  let depth = 0
+  let commaCount = 0
+  let inStr = false
+  let strCh = ''
+
+  for (let i = expr.length - 1; i >= 0; i--) {
+    const ch = expr[i]
+
+    if (inStr) {
+      if (ch === strCh) inStr = false
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      inStr = true
+      strCh = ch
+      continue
+    }
+
+    if (ch === ')') {
+      depth++
+    } else if (ch === '(') {
+      if (depth > 0) {
+        depth--
+      } else {
+        // Found the matching open paren — look for function name before it
+        const before = expr.substring(0, i)
+        const funcMatch = before.match(/([A-Za-z]+)$/)
+        if (funcMatch) {
+          return { funcName: funcMatch[1].toUpperCase(), paramIndex: commaCount }
+        }
+        return null
+      }
+    } else if (ch === ',' && depth === 0) {
+      commaCount++
+    }
+  }
+  return null
+}
+
 export default function FormulaAutocomplete({ editValue, onSelect, visible, anchorRect, slashMode }: Props) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
+
+  // Detect function context for parameter hints
+  const functionContext = useMemo(() => detectFunctionContext(editValue), [editValue])
 
   // Extract the function name being typed after '=' or '/'
   const searchText = useMemo(() => {
@@ -215,14 +371,62 @@ export default function FormulaAutocomplete({ editValue, onSelect, visible, anch
     return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [visible, selectedIndex, selectableIndices, displayItems, searchText, slashMode, onSelect])
 
-  if (!visible || !anchorRect || selectableIndices.length === 0) return null
+  // Show parameter hints even when autocomplete list is not visible
+  const showParamHints = visible && anchorRect && functionContext && FUNCTION_SIGNATURES[functionContext.funcName]
+
+  if (!visible || !anchorRect) return null
+
+  // If no autocomplete matches but we have param hints, show just the hints
+  if (selectableIndices.length === 0 && !showParamHints) return null
 
   return (
     <div
-      className="fixed z-50 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl shadow-black/30 overflow-hidden"
+      className="fixed z-50"
       style={{
         top: anchorRect.top + 28,
         left: anchorRect.left,
+      }}
+    >
+      {/* Parameter hints tooltip */}
+      {showParamHints && (() => {
+        const sig = FUNCTION_SIGNATURES[functionContext.funcName]
+        return (
+          <div className="bg-slate-900 border border-slate-600 rounded-lg shadow-xl px-3 py-2 mb-1 max-w-md">
+            <div className="flex items-center gap-1.5 text-xs font-mono">
+              <span className="text-indigo-400 font-semibold">{functionContext.funcName}</span>
+              <span className="text-slate-500">(</span>
+              {sig.params.map((param, idx) => {
+                const isCurrent = idx === functionContext.paramIndex
+                const isOptional = param.optional
+                return (
+                  <span key={idx} className="inline-flex items-center">
+                    {idx > 0 && <span className="text-slate-500 mr-1">,</span>}
+                    <span
+                      className={`${
+                        isCurrent
+                          ? 'text-white font-bold bg-indigo-500/20 px-1 rounded'
+                          : isOptional
+                            ? 'text-slate-500 italic'
+                            : 'text-slate-400'
+                      }`}
+                    >
+                      {isOptional && !isCurrent ? `[${param.name}]` : param.name}
+                    </span>
+                  </span>
+                )
+              })}
+              <span className="text-slate-500">)</span>
+            </div>
+            <div className="text-[10px] text-slate-500 mt-1">{sig.description}</div>
+          </div>
+        )
+      })()}
+
+      {/* Autocomplete dropdown */}
+      {selectableIndices.length > 0 && (
+    <div
+      className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl shadow-black/30 overflow-hidden"
+      style={{
         minWidth: slashMode ? 400 : 320,
         maxHeight: slashMode ? 360 : 260,
       }}
@@ -274,6 +478,8 @@ export default function FormulaAutocomplete({ editValue, onSelect, visible, anch
           )
         })}
       </div>
+    </div>
+      )}
     </div>
   )
 }

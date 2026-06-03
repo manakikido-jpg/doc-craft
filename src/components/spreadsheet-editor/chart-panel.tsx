@@ -1,20 +1,15 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import type { Sheet } from '@/types'
+import type { Sheet, SpreadsheetChart, SpreadsheetChartType } from '@/types'
 import { colIndexToLetter, evaluateCell } from '@/lib/formula-engine'
-import { X, BarChart3, TrendingUp, PieChart, ScatterChart } from 'lucide-react'
+import { stackedSegments, stackedMax, percentStackedSegments } from '@/lib/chart-geometry'
+import { formatCompact } from '@/lib/format-number'
+import { X, BarChart3, TrendingUp, PieChart, ScatterChart, AreaChart, BarChartHorizontal, Layers, CircleDot } from 'lucide-react'
 
 const CHART_COLORS = ['#6366f1', '#f97316', '#22c55e', '#eab308', '#ec4899', '#06b6d4', '#8b5cf6', '#ef4444']
 
-export interface SpreadsheetChart {
-  id: string
-  chartType: 'bar' | 'line' | 'pie' | 'scatter'
-  title: string
-  range: { startRow: number; startCol: number; endRow: number; endCol: number }
-  x: number
-  y: number
-}
+export type { SpreadsheetChart, SpreadsheetChartType }
 
 interface Props {
   sheet: Sheet
@@ -23,12 +18,18 @@ interface Props {
   onClose: () => void
 }
 
-type ChartType = 'bar' | 'line' | 'pie' | 'scatter'
+type ChartType = SpreadsheetChartType
 
 const CHART_TYPES: { type: ChartType; label: string; icon: typeof BarChart3 }[] = [
   { type: 'bar', label: '棒グラフ', icon: BarChart3 },
+  { type: 'stackedBar', label: '積み上げ棒', icon: Layers },
+  { type: 'stackedBar100', label: '100%積み上げ', icon: Layers },
+  { type: 'horizontalBar', label: '横棒', icon: BarChartHorizontal },
   { type: 'line', label: '折れ線', icon: TrendingUp },
+  { type: 'area', label: '面', icon: AreaChart },
+  { type: 'combo', label: '複合(棒+線)', icon: BarChart3 },
   { type: 'pie', label: '円グラフ', icon: PieChart },
+  { type: 'donut', label: 'ドーナツ', icon: CircleDot },
   { type: 'scatter', label: '散布図', icon: ScatterChart },
 ]
 
@@ -220,9 +221,10 @@ export function renderChartSVG(
   const minVal = Math.min(0, ...allValues)
   const range = maxVal - minVal || 1
 
-  if (chartType === 'pie') {
+  if (chartType === 'pie' || chartType === 'donut') {
     const values = data.datasets[0]?.values || []
     const total = values.reduce((a, b) => a + b, 0) || 1
+    const innerR = chartType === 'donut' ? 36 : 0
     let cumAngle = -90
     let paths = ''
     values.forEach((val, i) => {
@@ -235,7 +237,11 @@ export function renderChartSVG(
       const x2 = cx + r * Math.cos(endRad), y2 = cy + r * Math.sin(endRad)
       const large = angle > 180 ? 1 : 0
       const color = CHART_COLORS[i % CHART_COLORS.length]
-      if (values.length === 1) {
+      if (chartType === 'donut') {
+        const ix1 = cx + innerR * Math.cos(startRad), iy1 = cy + innerR * Math.sin(startRad)
+        const ix2 = cx + innerR * Math.cos(endRad), iy2 = cy + innerR * Math.sin(endRad)
+        paths += `<path d="M${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} L${ix2},${iy2} A${innerR},${innerR} 0 ${large},0 ${ix1},${iy1} Z" fill="${color}" stroke="#0f172a" stroke-width="1"/>`
+      } else if (values.length === 1) {
         paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/>`
       } else {
         paths += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z" fill="${color}" stroke="#0f172a" stroke-width="1"/>`
@@ -268,7 +274,7 @@ export function renderChartSVG(
     for (const t of [0, 0.25, 0.5, 0.75, 1]) {
       const y = padding.top + chartH * (1 - t)
       svg += `<line x1="${padding.left}" y1="${y}" x2="${padding.left + chartW}" y2="${y}" stroke="#334155" stroke-width="0.5"/>`
-      svg += `<text x="${padding.left - 4}" y="${y + 3}" text-anchor="end" fill="#64748b" font-size="7">${Math.round(yMin + yRange * t)}</text>`
+      svg += `<text x="${padding.left - 4}" y="${y + 3}" text-anchor="end" fill="#64748b" font-size="7">${formatCompact(yMin + yRange * t)}</text>`
     }
     // Points
     const len = Math.min(xVals.length, yVals.length)
@@ -280,11 +286,61 @@ export function renderChartSVG(
     return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%">${svg}</svg>`
   }
 
-  // Bar / Line
+  // Bar / Line / Area / Stacked / Horizontal / Combo
   const chartW = W - padding.left - padding.right
   const chartH = H - padding.top - padding.bottom
   const barGroupW = chartW / data.labels.length
   const barW = barGroupW / (data.datasets.length + 0.5)
+  const cxAt = (i: number) => padding.left + barGroupW * i + barGroupW / 2
+
+  // ── Stacked / 100% stacked column ──
+  if (chartType === 'stackedBar' || chartType === 'stackedBar100') {
+    const isPct = chartType === 'stackedBar100'
+    const seg = isPct ? percentStackedSegments(data.datasets, data.labels.length) : stackedSegments(data.datasets, data.labels.length)
+    const yMax = isPct ? 1 : stackedMax(data.datasets, data.labels.length)
+    const yOf = (v: number) => padding.top + chartH * (1 - v / yMax)
+    let svg = ''
+    if (title) svg += `<text x="150" y="18" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600">${escapeXml(title)}</text>`
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+      const y = padding.top + chartH * (1 - t)
+      svg += `<line x1="${padding.left}" y1="${y}" x2="${padding.left + chartW}" y2="${y}" stroke="#334155" stroke-width="0.5"/>`
+      svg += `<text x="${padding.left - 4}" y="${y + 3}" text-anchor="end" fill="#64748b" font-size="7">${isPct ? Math.round(t * 100) + '%' : formatCompact(yMax * t)}</text>`
+    }
+    data.labels.forEach((label, i) => {
+      svg += `<text x="${cxAt(i)}" y="${H - padding.bottom + 14}" text-anchor="middle" fill="#94a3b8" font-size="7">${escapeXml(label.length > 8 ? label.slice(0, 8) + '..' : label)}</text>`
+    })
+    data.datasets.forEach((ds, di) => {
+      const color = CHART_COLORS[di % CHART_COLORS.length]
+      ds.values.forEach((_, i) => {
+        const yTop = yOf(seg.tops[di][i]); const yBase = yOf(seg.bases[di][i])
+        const bx = padding.left + barGroupW * i + barGroupW * 0.2
+        const h = Math.max(0, yBase - yTop)
+        if (h > 0) svg += `<rect x="${bx}" y="${yTop}" width="${barGroupW * 0.6}" height="${h}" fill="${color}"/>`
+      })
+    })
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%">${svg}</svg>`
+  }
+
+  // ── Horizontal bar ──
+  if (chartType === 'horizontalBar') {
+    const rowH = chartH / data.labels.length
+    const ds0 = data.datasets
+    let svg = ''
+    if (title) svg += `<text x="150" y="18" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600">${escapeXml(title)}</text>`
+    data.labels.forEach((label, i) => {
+      svg += `<text x="${padding.left - 4}" y="${padding.top + rowH * i + rowH / 2 + 3}" text-anchor="end" fill="#94a3b8" font-size="7">${escapeXml(label.length > 7 ? label.slice(0, 7) + '..' : label)}</text>`
+    })
+    const barH = rowH / (ds0.length + 0.5)
+    ds0.forEach((ds, di) => {
+      const color = CHART_COLORS[di % CHART_COLORS.length]
+      ds.values.forEach((v, i) => {
+        const w = chartW * ((v - minVal) / range)
+        const by = padding.top + rowH * i + barH * di + rowH * 0.15
+        svg += `<rect x="${padding.left}" y="${by}" width="${Math.max(0, w)}" height="${barH * 0.85}" fill="${color}" rx="2"/>`
+      })
+    })
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%">${svg}</svg>`
+  }
 
   let svg = ''
   if (title) svg += `<text x="150" y="18" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600">${escapeXml(title)}</text>`
@@ -293,24 +349,35 @@ export function renderChartSVG(
     const y = padding.top + chartH * (1 - t)
     const val = minVal + range * t
     svg += `<line x1="${padding.left}" y1="${y}" x2="${padding.left + chartW}" y2="${y}" stroke="#334155" stroke-width="0.5"/>`
-    svg += `<text x="${padding.left - 4}" y="${y + 3}" text-anchor="end" fill="#64748b" font-size="7">${Math.round(val)}</text>`
+    svg += `<text x="${padding.left - 4}" y="${y + 3}" text-anchor="end" fill="#64748b" font-size="7">${formatCompact(val)}</text>`
   }
   // Labels
   data.labels.forEach((label, i) => {
     svg += `<text x="${padding.left + barGroupW * i + barGroupW / 2}" y="${H - padding.bottom + 14}" text-anchor="middle" fill="#94a3b8" font-size="7">${escapeXml(label.length > 8 ? label.slice(0, 8) + '..' : label)}</text>`
   })
   // Data
+  const yAt = (v: number) => padding.top + chartH * (1 - (v - minVal) / range)
   data.datasets.forEach((ds, di) => {
     const color = CHART_COLORS[di % CHART_COLORS.length]
-    if (chartType === 'line') {
-      const points = ds.values
-        .map((v, i) => `${padding.left + barGroupW * i + barGroupW / 2},${padding.top + chartH * (1 - (v - minVal) / range)}`)
-        .join(' ')
+    // Combo: first dataset as bars, the rest as lines.
+    const asLine = chartType === 'line' || (chartType === 'combo' && di > 0)
+    const asArea = chartType === 'area'
+    if (asArea) {
+      const pts = ds.values.map((v, i) => `${cxAt(i)},${yAt(v)}`)
+      const baseY = padding.top + chartH
+      svg += `<path d="M${cxAt(0)},${baseY} ${pts.map(p => `L${p}`).join(' ')} L${cxAt(ds.values.length - 1)},${baseY} Z" fill="${color}" fill-opacity="0.25"/>`
+      svg += `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2"/>`
+      ds.values.forEach((v, i) => { svg += `<circle cx="${cxAt(i)}" cy="${yAt(v)}" r="3" fill="${color}"/>` })
+    } else if (asLine) {
+      const points = ds.values.map((v, i) => `${cxAt(i)},${yAt(v)}`).join(' ')
       svg += `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2"/>`
+      ds.values.forEach((v, i) => { svg += `<circle cx="${cxAt(i)}" cy="${yAt(v)}" r="3" fill="${color}"/>` })
+    } else if (chartType === 'combo') {
+      // combo, di === 0 → wide centered bars
       ds.values.forEach((v, i) => {
-        const x = padding.left + barGroupW * i + barGroupW / 2
-        const y = padding.top + chartH * (1 - (v - minVal) / range)
-        svg += `<circle cx="${x}" cy="${y}" r="3" fill="${color}"/>`
+        const h = chartH * ((v - minVal) / range)
+        const bx = padding.left + barGroupW * i + barGroupW * 0.22
+        svg += `<rect x="${bx}" y="${padding.top + chartH - h}" width="${barGroupW * 0.56}" height="${Math.max(0, h)}" fill="${color}" rx="2"/>`
       })
     } else {
       ds.values.forEach((v, i) => {

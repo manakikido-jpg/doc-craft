@@ -13,39 +13,26 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          )
           supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
+            supabaseResponse.cookies.set(name, value, options)
           )
         },
       },
-    },
+    }
   )
 
-  // セッションリフレッシュ
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  // 未認証ユーザーをログインページにリダイレクト
-  const isAuthPage =
-    request.nextUrl.pathname === '/login' ||
-    request.nextUrl.pathname === '/signup' ||
-    request.nextUrl.pathname === '/auth/callback'
-  const isPublicPage = request.nextUrl.pathname === '/'
-
-  if (!user && !isAuthPage && !isPublicPage) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
-  }
-
-  // 認証済みユーザーがログインページにアクセスしたらダッシュボードへ
-  if (user && isAuthPage) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
+  // refreshing the auth token (with timeout to prevent hanging)
+  try {
+    await Promise.race([
+      supabase.auth.getUser(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000)),
+    ])
+  } catch {
+    // If getUser fails or times out, continue without auth
   }
 
   return supabaseResponse

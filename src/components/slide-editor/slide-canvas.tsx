@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import type {
   SlidesDocument,
   SlideElement,
   SlideTableElement,
   SlideConnectorElement,
+  SlideImageElement,
+  SlideShapeElement,
 } from '@/types'
 import type { SlideAction } from '@/hooks/use-slides'
 import type { UndoableAction } from '@/lib/undoable'
@@ -13,25 +15,67 @@ import ChartRenderer from './chart-renderer'
 import { SLIDE_THEMES } from '@/lib/themes'
 import SlideTextBlock from './slide-text-block'
 import ResizeHandles from './resize-handles'
+import {
+  renderSlideElement,
+  LockedBadge,
+  type CanvasCallbacks,
+} from './element-renderer'
 import ElementContextMenu from './element-context-menu'
 import SlideFormatToolbar from './slide-format-toolbar'
 import AlignmentToolbar from './alignment-toolbar'
 import ElementPropertiesPanel from './element-properties-panel'
 import ImageFiltersPanel from './image-filters-panel'
+import ImageCropModal from './image-crop-modal'
 import ChartDataEditor from './chart-data-editor'
+import ElementSizeTooltip from './element-size-tooltip'
+import SlideRuler from './slide-ruler'
+import CanvasGrid from './canvas-grid'
+import CanvasRuler from './canvas-ruler'
 import { fileToDataURL, isStorageNearLimit } from '@/lib/image-utils'
+import { compressImage } from '@/lib/image-compress'
 import { generateId } from '@/lib/utils'
+import { useToast } from '@/components/shared/toast'
+import { sanitizeHtml } from '@/lib/sanitize'
+import {
+  computeSmartGuides as computeSmartGuidesUtil,
+  getAnchorPoints,
+  findNearestAnchor as findNearestAnchorUtil,
+  ANCHOR_SNAP_THRESHOLD,
+  getElementTransform,
+  getElementFilterStyle,
+  snapToGridValue,
+  type SmartGuide,
+} from '@/lib/canvas-helpers'
+
+interface WatermarkConfig {
+  enabled: boolean
+  text: string
+  fontSize: number
+  color: string
+  opacity: number
+  rotation: number
+  position: 'center' | 'diagonal' | 'bottom-right'
+}
 
 interface Props {
   state: SlidesDocument
   dispatch: React.Dispatch<UndoableAction<SlideAction>>
   onSelectionChange?: (ids: string[]) => void
+  zoom?: number
+  onZoomChange?: (zoom: number) => void
+  watermarkConfig?: WatermarkConfig
+  gridVisible?: boolean
+  rulerVisible?: boolean
+  onCropOverlay?: (elementId: string) => void
 }
 
-export default function SlideCanvas({ state, dispatch, onSelectionChange }: Props) {
+
+export default function SlideCanvas({ state, dispatch, onSelectionChange, zoom: externalZoom, onZoomChange, watermarkConfig, gridVisible = false, rulerVisible = false, onCropOverlay }: Props) {
+  const { addToast } = useToast()
   const elementClipboardRef = useRef<SlideElement[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
+  const [editingTableId, setEditingTableId] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragStart, setDragStart] = useState<{
     mx: number
@@ -43,17 +87,59 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
   )
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [showFormatToolbar, setShowFormatToolbar] = useState(false)
-  const [zoom, setZoom] = useState(100)
+  const [localZoom, setLocalZoom] = useState(100)
+  const zoom = externalZoom ?? localZoom
+  const setZoom = useCallback((v: number | ((prev: number) => number)) => {
+    const next = typeof v === 'function' ? v(zoom) : v
+    if (onZoomChange) onZoomChange(next)
+    else setLocalZoom(next)
+  }, [zoom, onZoomChange])
   const [showGrid, setShowGrid] = useState(false)
   const [snapToGrid, setSnapToGrid] = useState(false)
   const [gridSize] = useState(5)
   const [smartGuides, setSmartGuides] = useState<{ x?: number; y?: number; type?: 'edge' | 'center' | 'spacing' }[]>([])
+  const [snapGuides, setSnapGuides] = useState<{type: 'horizontal'|'vertical', position: number}[]>([])
   const [propertiesPanel, setPropertiesPanel] = useState(false)
   const [imageFiltersPanel, setImageFiltersPanel] = useState(false)
   const [chartEditorPanel, setChartEditorPanel] = useState(false)
+  const [cropModalElementId, setCropModalElementId] = useState<string | null>(null)
+  const [connectorDragMode, setConnectorDragMode] = useState<'from' | 'to' | null>(null)
+  const [connectorDragId, setConnectorDragId] = useState<string | null>(null)
+  const [connectorDragPoint, setConnectorDragPoint] = useState<{ x: number; y: number } | null>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const [hoveredShapeId, setHoveredShapeId] = useState<string | null>(null)
+  const [altDragging, setAltDragging] = useState(false)
+  const [showRuler, setShowRuler] = useState(false)
+  const [guides, setGuides] = useState<{ orientation: 'h' | 'v'; position: number }[]>([])
+  const [resizeTooltip, setResizeTooltip] = useState<{ visible: boolean; x: number; y: number; w: number; h: number }>({ visible: false, x: 0, y: 0, w: 0, h: 0 })
+  const [dragTooltip, setDragTooltip] = useState<{ visible: boolean; clientX: number; clientY: number; elX: number; elY: number }>({ visible: false, clientX: 0, clientY: 0, elX: 0, elY: 0 })
+  const [colResizeDrag, setColResizeDrag] = useState<{ elementId: string; col: number; startX: number; startWidth: number; currentX: number; tableLeft: number; tableWidth: number } | null>(null)
+  const [cropOverlayOpen, setCropOverlayOpen] = useState(false)
+  const [insideGroupId, setInsideGroupId] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const replaceFileRef = useRef<HTMLInputElement>(null)
+  const smartGuidesRafRef = useRef<number>(0)
+  const shiftKeyRef = useRef(false)
+
+  // Track shift key state for aspect-ratio-locked resize
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) { if (e.key === 'Shift') shiftKeyRef.current = true }
+    function onKeyUp(e: KeyboardEvent) { if (e.key === 'Shift') shiftKeyRef.current = false }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [])
+
+  // Clean up requestAnimationFrame on unmount
+  useEffect(() => {
+    return () => {
+      if (smartGuidesRafRef.current) cancelAnimationFrame(smartGuidesRafRef.current)
+    }
+  }, [])
 
   const slideOrNull = state.slides.find((s) => s.id === state.activeSlideId)
 
@@ -69,6 +155,13 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
       if (editingTextId) return
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Don't handle if user is editing text in a contentEditable, input, or textarea
+        const active = document.activeElement
+        if (active && (
+          (active as HTMLElement).isContentEditable ||
+          active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA'
+        )) return
         if (selectedIds.size > 0) {
           e.preventDefault()
           const unlocked = Array.from(selectedIds).filter((id) => {
@@ -84,6 +177,22 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
       if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
         if (selectedIds.size > 0) {
           elementClipboardRef.current = slide.elements.filter((el) => selectedIds.has(el.id)).map((el) => ({ ...el }))
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'x') {
+        if (selectedIds.size > 0) {
+          e.preventDefault()
+          // Copy selected elements to clipboard
+          elementClipboardRef.current = slide.elements.filter((el) => selectedIds.has(el.id)).map((el) => ({ ...el }))
+          // Delete them from the slide
+          const unlocked = Array.from(selectedIds).filter((id) => {
+            const el = slide.elements.find((e) => e.id === id)
+            return !el || !('locked' in el && el.locked)
+          })
+          if (unlocked.length > 0) {
+            dispatch({ type: 'DELETE_ELEMENTS', slideId: slide.id, elementIds: unlocked })
+            setSelectedIds(new Set())
+          }
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
@@ -131,6 +240,17 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
           .filter(Boolean) as { elementId: string; x: number; y: number }[]
         if (moves.length > 0) dispatch({ type: 'UPDATE_ELEMENTS_POSITION', slideId: slide.id, moves })
       }
+      // Enter or F2: start editing selected text element
+      if ((e.key === 'Enter' || e.key === 'F2') && selectedIds.size === 1 && !e.ctrlKey && !e.metaKey) {
+        const id = Array.from(selectedIds)[0]
+        const el = slide.elements.find((el) => el.id === id)
+        if (el && (el.type === 'title' || el.type === 'body' || el.type === 'subtitle')) {
+          e.preventDefault()
+          setEditingTextId(id)
+          setSelectedIds(new Set([id]))
+          setShowFormatToolbar(true)
+        }
+      }
       // Zoom shortcuts
       if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
         e.preventDefault()
@@ -150,6 +270,17 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
           dispatch({ type: 'GROUP_ELEMENTS', slideId: slide.id, elementIds: Array.from(selectedIds) })
         }
       }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        const els = slide?.elements.filter(el => el.type !== 'connector') || []
+        if (els.length === 0) return
+        const currentIdx = els.findIndex(el => selectedIds.has(el.id))
+        const nextIdx = e.shiftKey
+          ? (currentIdx <= 0 ? els.length - 1 : currentIdx - 1)
+          : (currentIdx + 1) % els.length
+        setSelectedIds(new Set([els[nextIdx].id]))
+        setEditingTextId(null)
+      }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'G') {
         e.preventDefault()
         const el = slide.elements.find((el) => selectedIds.has(el.id) && (el as any).groupId)
@@ -160,10 +291,22 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [slideOrNull, selectedIds, editingTextId, dispatch])
 
+  // useMemo MUST be called before early return to satisfy Rules of Hooks
+  const sortedElements = useMemo(() => {
+    if (!slideOrNull) return []
+    return [...slideOrNull.elements].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+  }, [slideOrNull?.elements])
+
   if (!slideOrNull) {
     return (
       <div className="flex-1 flex items-center justify-center bg-slate-900">
-        <span className="text-slate-500">スライドが選択されていません</span>
+        <div className="text-center">
+          <span className="text-slate-500 block">
+            {state.slides.length === 0
+              ? 'スライドがありません。左パネルの「スライド追加」で作成してください。'
+              : 'スライドが選択されていません'}
+          </span>
+        </div>
       </div>
     )
   }
@@ -171,10 +314,17 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
   const slide = slideOrNull
   const baseTheme = SLIDE_THEMES[slide.themeKey]
   const theme = slide.customTheme ? { ...baseTheme, ...slide.customTheme } : baseTheme
-  const sortedElements = [...slide.elements].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
 
   function selectElement(id: string, e: React.MouseEvent) {
     e.stopPropagation()
+    // Commit any ongoing text edit when selecting a different element
+    if (editingTextId && editingTextId !== id) {
+      commitEditingText()
+    }
+    // Exit table editing when selecting a different element
+    if (editingTableId && editingTableId !== id) {
+      setEditingTableId(null)
+    }
     if (e.shiftKey) {
       setSelectedIds((prev) => {
         const next = new Set(prev)
@@ -183,9 +333,32 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
         return next
       })
     } else if (!selectedIds.has(id)) {
-      setSelectedIds(new Set([id]))
+      // Group selection: if clicking an element with a groupId and not inside the group,
+      // auto-select ALL elements in that group
+      const clickedEl = slide.elements.find(el => el.id === id)
+      const clickedGroupId = clickedEl && (clickedEl as any).groupId as string | undefined
+      if (clickedGroupId && insideGroupId !== clickedGroupId) {
+        const groupMemberIds = slide.elements
+          .filter(el => (el as any).groupId === clickedGroupId)
+          .map(el => el.id)
+        setSelectedIds(new Set(groupMemberIds))
+      } else {
+        setSelectedIds(new Set([id]))
+      }
     }
     setContextMenu(null)
+  }
+
+  function handleElementDoubleClick(id: string) {
+    const el = slide.elements.find(el => el.id === id)
+    const elGroupId = el && (el as any).groupId as string | undefined
+    if (elGroupId && insideGroupId !== elGroupId) {
+      // Enter the group: allow selecting individual elements within it
+      setInsideGroupId(elGroupId)
+      setSelectedIds(new Set([id]))
+      return true // signal that we handled the double-click as group-enter
+    }
+    return false // not a group-enter, let normal double-click behavior proceed
   }
 
   function handleElementMouseDown(e: React.MouseEvent, el: SlideElement) {
@@ -196,13 +369,18 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
       return
     }
     e.stopPropagation()
+    // Commit any ongoing text edit when interacting with a different element
+    if (editingTextId && editingTextId !== el.id) {
+      commitEditingText()
+    }
 
-    // Alt+drag = duplicate
+    // Alt+drag = duplicate: clone element at original position, drag the copy
     if (e.altKey) {
       const duped = { ...el, id: generateId(), x: el.x, y: el.y }
       dispatch({ type: 'PASTE_ELEMENTS', slideId: slide.id, elements: [duped] })
       setSelectedIds(new Set([duped.id]))
       setDraggingId(duped.id)
+      setAltDragging(true)
       const positions = [{ id: duped.id, x: el.x, y: el.y }]
       setDragStart({ mx: e.clientX, my: e.clientY, positions })
       return
@@ -223,130 +401,48 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
   }
 
   function snapValue(val: number): number {
-    if (!snapToGrid) return val
-    return Math.round(val / gridSize) * gridSize
-  }
-
-  function computeSmartGuides(
-    movingIds: string[],
-    newPositions: { elementId: string; x: number; y: number }[],
-  ): {
-    guides: { x?: number; y?: number; type?: 'edge' | 'center' | 'spacing' }[]
-    snapDx: number
-    snapDy: number
-  } {
-    const guides: { x?: number; y?: number; type?: 'edge' | 'center' | 'spacing' }[] = []
-    const others = slide.elements.filter((el) => !movingIds.includes(el.id) && el.type !== 'connector')
-    const threshold = 1
-    let snapDx = 0
-    let snapDy = 0
-    let snappedX = false
-    let snappedY = false
-
-    for (const pos of newPositions) {
-      const moving = slide.elements.find((e) => e.id === pos.elementId)
-      if (!moving || moving.type === 'connector') continue
-      const mw = moving.w ?? 0
-      const mh = 'h' in moving ? (moving.h ?? 0) : 0
-      const mLeft = pos.x
-      const mRight = pos.x + mw
-      const mTop = pos.y
-      const mBottom = pos.y + mh
-      const mCx = pos.x + mw / 2
-      const mCy = pos.y + mh / 2
-
-      for (const other of others) {
-        if (other.type === 'connector') continue
-        const ow = other.w ?? 0
-        const oh = 'h' in other ? ((other as any).h ?? 0) : 0
-        const oLeft = other.x
-        const oRight = other.x + ow
-        const oTop = other.y
-        const oCx = other.x + ow / 2
-        const oCy = other.y + oh / 2
-        const oBottom = other.y + oh
-
-        // Vertical guides (x-axis alignment)
-        const xChecks = [
-          { mv: mLeft, ov: oLeft, type: 'edge' as const },
-          { mv: mRight, ov: oRight, type: 'edge' as const },
-          { mv: mLeft, ov: oRight, type: 'edge' as const },
-          { mv: mRight, ov: oLeft, type: 'edge' as const },
-          { mv: mCx, ov: oCx, type: 'center' as const },
-        ]
-        for (const chk of xChecks) {
-          const diff = chk.ov - chk.mv
-          if (Math.abs(diff) < threshold) {
-            guides.push({ x: chk.ov, type: chk.type })
-            if (!snappedX) { snapDx = diff; snappedX = true }
-          }
-        }
-
-        // Horizontal guides (y-axis alignment)
-        const yChecks = [
-          { mv: mTop, ov: oTop, type: 'edge' as const },
-          { mv: mBottom, ov: oBottom, type: 'edge' as const },
-          { mv: mTop, ov: oBottom, type: 'edge' as const },
-          { mv: mBottom, ov: oTop, type: 'edge' as const },
-          { mv: mCy, ov: oCy, type: 'center' as const },
-        ]
-        for (const chk of yChecks) {
-          const diff = chk.ov - chk.mv
-          if (Math.abs(diff) < threshold) {
-            guides.push({ y: chk.ov, type: chk.type })
-            if (!snappedY) { snapDy = diff; snappedY = true }
-          }
-        }
-      }
-
-      // Equal spacing guides (check gaps between sorted elements)
-      if (others.length >= 2) {
-        const otherBoxes = others.map((o) => ({
-          x: (o as any).x ?? 0,
-          w: (o as any).w ?? 0,
-        }))
-        otherBoxes.sort((a, b) => a.x - b.x)
-        for (let i = 0; i < otherBoxes.length - 1; i++) {
-          const a = otherBoxes[i]
-          const b = otherBoxes[i + 1]
-          const gap = b.x - (a.x + a.w)
-          const gapBeforeMoving = mLeft - (a.x + a.w)
-          const gapAfterMoving = b.x - mRight
-          if (gap > 0 && Math.abs(gapBeforeMoving - gap) < threshold) {
-            guides.push({ x: a.x + a.w + gap, type: 'spacing' })
-          }
-          if (gap > 0 && Math.abs(gapAfterMoving - gap) < threshold) {
-            guides.push({ x: b.x + b.w + gap, type: 'spacing' })
-          }
-        }
-      }
-    }
-
-    // Deduplicate guides
-    const seen = new Set<string>()
-    const unique = guides.filter((g) => {
-      const key = `${g.x ?? ''}_${g.y ?? ''}_${g.type ?? ''}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-
-    return { guides: unique, snapDx, snapDy }
+    return snapToGridValue(val, gridSize, snapToGrid)
   }
 
   function handleMouseMove(e: React.MouseEvent) {
     if (!canvasRef.current) return
 
+    // Handle table column resize dragging
+    if (colResizeDrag) {
+      setColResizeDrag(prev => prev ? { ...prev, currentX: e.clientX } : null)
+      return
+    }
+
+    // Handle connector endpoint dragging
+    if (connectorDragId && connectorDragMode) {
+      const rect = canvasRef.current.getBoundingClientRect()
+      const px = ((e.clientX - rect.left) / rect.width) * 100
+      const py = ((e.clientY - rect.top) / rect.height) * 100
+      setConnectorDragPoint({ x: Math.max(0, Math.min(100, px)), y: Math.max(0, Math.min(100, py)) })
+      return
+    }
+
     if (draggingId && dragStart) {
       const rect = canvasRef.current.getBoundingClientRect()
-      const dx = ((e.clientX - dragStart.mx) / rect.width) * 100
-      const dy = ((e.clientY - dragStart.my) / rect.height) * 100
+      let dx = ((e.clientX - dragStart.mx) / rect.width) * 100
+      let dy = ((e.clientY - dragStart.my) / rect.height) * 100
+      // Constrain to single axis when Ctrl+Shift held
+      if (e.ctrlKey && e.shiftKey) {
+        const absDx = Math.abs(dx)
+        const absDy = Math.abs(dy)
+        if (absDx > absDy) {
+          dy = 0
+        } else {
+          dx = 0
+        }
+      }
       let moves = dragStart.positions.map((p) => ({
         elementId: p.id,
         x: snapValue(Math.max(0, Math.min(90, p.x + dx))),
         y: snapValue(Math.max(0, Math.min(90, p.y + dy))),
       }))
-      const { guides, snapDx, snapDy } = computeSmartGuides(
+      const { guides, snapDx, snapDy } = computeSmartGuidesUtil(
+        slide.elements,
         moves.map((m) => m.elementId),
         moves,
       )
@@ -358,8 +454,27 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
           y: Math.max(0, Math.min(90, m.y + snapDy)),
         }))
       }
-      setSmartGuides(guides)
+      if (smartGuidesRafRef.current) cancelAnimationFrame(smartGuidesRafRef.current)
+      smartGuidesRafRef.current = requestAnimationFrame(() => {
+        setSmartGuides(guides)
+        // Build snap guide lines for div-based rendering
+        const newSnapGuides: {type: 'horizontal'|'vertical', position: number}[] = []
+        for (const g of guides) {
+          if (g.x !== undefined) {
+            newSnapGuides.push({ type: 'vertical', position: g.x })
+          }
+          if (g.y !== undefined) {
+            newSnapGuides.push({ type: 'horizontal', position: g.y })
+          }
+        }
+        setSnapGuides(newSnapGuides)
+      })
       dispatch({ type: 'UPDATE_ELEMENTS_POSITION', slideId: slide.id, moves })
+      // Update drag position tooltip
+      if (moves.length > 0) {
+        const m = moves[0]
+        setDragTooltip({ visible: true, clientX: e.clientX, clientY: e.clientY, elX: m.x, elY: m.y })
+      }
       return
     }
 
@@ -378,6 +493,49 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
   }
 
   function handleMouseUp() {
+    // Finalize table column resize
+    if (colResizeDrag) {
+      const deltaX = colResizeDrag.currentX - colResizeDrag.startX
+      const deltaPct = (deltaX / colResizeDrag.tableWidth) * 100
+      const newWidth = Math.max(10, colResizeDrag.startWidth + deltaPct)
+      dispatch({
+        type: 'SET_TABLE_COL_WIDTH',
+        slideId: slide.id,
+        elementId: colResizeDrag.elementId,
+        col: colResizeDrag.col,
+        width: newWidth,
+      })
+      setColResizeDrag(null)
+      return
+    }
+
+    // Finalize connector endpoint drag with anchor snapping
+    if (connectorDragId && connectorDragMode && connectorDragPoint) {
+      const conn = slide.elements.find(e => e.id === connectorDragId && e.type === 'connector') as SlideConnectorElement | undefined
+      if (conn) {
+        const snap = findNearestAnchorUtil(slide.elements, connectorDragPoint, connectorDragId)
+        const finalPoint = snap ? snap.anchor : connectorDragPoint
+        const finalElementId = snap ? snap.elementId : undefined
+        const fromPoint = connectorDragMode === 'from' ? finalPoint : conn.fromPoint
+        const toPoint = connectorDragMode === 'to' ? finalPoint : conn.toPoint
+        const fromElementId = connectorDragMode === 'from' ? finalElementId : conn.fromElementId
+        const toElementId = connectorDragMode === 'to' ? finalElementId : conn.toElementId
+        dispatch({
+          type: 'UPDATE_CONNECTOR_ENDPOINTS',
+          slideId: slide.id,
+          elementId: connectorDragId,
+          fromPoint,
+          toPoint,
+          fromElementId,
+          toElementId,
+        })
+      }
+      setConnectorDragId(null)
+      setConnectorDragMode(null)
+      setConnectorDragPoint(null)
+      return
+    }
+
     if (rubberBand) {
       const x1 = Math.min(rubberBand.startX, rubberBand.endX)
       const y1 = Math.min(rubberBand.startY, rubberBand.endY)
@@ -404,7 +562,25 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
     }
     setDraggingId(null)
     setDragStart(null)
+    setAltDragging(false)
     setSmartGuides([])
+    setSnapGuides([])
+    setConnectorDragId(null)
+    setConnectorDragMode(null)
+    setConnectorDragPoint(null)
+    setResizeTooltip((prev) => ({ ...prev, visible: false }))
+    setDragTooltip((prev) => ({ ...prev, visible: false }))
+  }
+
+  function commitEditingText() {
+    if (!editingTextId) return
+    const editEl = document.querySelector<HTMLElement>('[contenteditable="true"]')
+    if (editEl) {
+      // Dispatch content update BEFORE clearing editing state
+      dispatch({ type: 'UPDATE_ELEMENT', slideId: slide.id, elementId: editingTextId, content: sanitizeHtml(editEl.innerHTML) })
+    }
+    setEditingTextId(null)
+    setShowFormatToolbar(false)
   }
 
   function handleCanvasMouseDown(e: React.MouseEvent) {
@@ -413,11 +589,15 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
     if (editingTextId) {
       const editEl = document.querySelector<HTMLElement>('[contenteditable="true"]')
       if (editEl && editEl.contains(e.target as Node)) return
+      // Commit text before deselecting
+      commitEditingText()
+    }
+    if (editingTableId) {
+      setEditingTableId(null)
     }
     setSelectedIds(new Set())
-    setEditingTextId(null)
     setContextMenu(null)
-    setShowFormatToolbar(false)
+    setInsideGroupId(null)
 
     if (canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect()
@@ -435,8 +615,36 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
   }
 
   function handleResize(elementId: string, x: number, y: number, w: number, h: number) {
+    let nw = Math.max(3, w)
+    let nh = Math.max(3, h)
+
+    // Shift key: lock aspect ratio based on original element dimensions
+    if (shiftKeyRef.current) {
+      const el = slide.elements.find((e) => e.id === elementId)
+      if (el && el.type !== 'connector') {
+        const origW = el.w
+        const origH = (el as any).h ?? el.w
+        if (origW > 0 && origH > 0) {
+          const aspect = origW / origH
+          // Use the dimension with the larger proportional change
+          if (Math.abs(nw - origW) / origW >= Math.abs(nh - origH) / origH) {
+            nh = nw / aspect
+          } else {
+            nw = nh * aspect
+          }
+          nw = Math.max(3, nw)
+          nh = Math.max(3, nh)
+        }
+      }
+    }
+
     dispatch({ type: 'UPDATE_ELEMENT_POSITION', slideId: slide.id, elementId, x, y })
-    dispatch({ type: 'UPDATE_ELEMENT_SIZE', slideId: slide.id, elementId, w, h })
+    dispatch({ type: 'UPDATE_ELEMENT_SIZE', slideId: slide.id, elementId, w: nw, h: nh })
+    // Show size tooltip during resize
+    if (canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect()
+      setResizeTooltip({ visible: true, x: rect.left + rect.width * (x + nw) / 100, y: rect.top + rect.height * y / 100 - 30, w: nw, h: nh })
+    }
   }
 
   function handleRotate(elementId: string, rotation: number) {
@@ -446,17 +654,54 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
   async function handleImageUpload(file: File) {
     if (!file.type.startsWith('image/') || !slide) return
     if (isStorageNearLimit()) {
-      alert('ストレージの容量が不足しています。')
+      addToast('ストレージの容量が不足しています。', 'warning')
       return
     }
-    const dataUrl = await fileToDataURL(file)
+    const rawDataUrl = await fileToDataURL(file)
+    const dataUrl = await compressImage(rawDataUrl)
     dispatch({ type: 'ADD_IMAGE_ELEMENT', slideId: slide.id, src: dataUrl, alt: file.name })
   }
 
-  function handleDrop(e: React.DragEvent) {
+  async function handleDrop(e: React.DragEvent) {
     e.preventDefault()
-    const file = e.dataTransfer.files[0]
-    if (file) handleImageUpload(file)
+    setDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    const acceptedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
+    for (const file of files) {
+      if (acceptedTypes.includes(file.type)) {
+        if (!slide || !canvasRef.current) continue
+        if (isStorageNearLimit()) {
+          addToast('ストレージの容量が不足しています。', 'warning')
+          return
+        }
+        const rawDataUrl = await fileToDataURL(file)
+        const dataUrl = await compressImage(rawDataUrl)
+        // Calculate drop position in canvas coordinates
+        const rect = canvasRef.current.getBoundingClientRect()
+        const dropX = ((e.clientX - rect.left) / rect.width) * 100
+        const dropY = ((e.clientY - rect.top) / rect.height) * 100
+        // Center the default size (300x200 mapped to percentage)
+        const imgW = (300 / rect.width) * 100
+        const imgH = (200 / rect.height) * 100
+        const posX = Math.max(0, Math.min(100 - imgW, dropX - imgW / 2))
+        const posY = Math.max(0, Math.min(100 - imgH, dropY - imgH / 2))
+        dispatch({
+          type: 'PASTE_ELEMENTS',
+          slideId: slide.id,
+          elements: [{
+            id: generateId(),
+            type: 'image' as const,
+            src: dataUrl,
+            alt: file.name,
+            x: posX,
+            y: posY,
+            w: imgW,
+            h: imgH,
+          } as any],
+        })
+        addToast('画像を追加しました', 'success', 2000)
+      }
+    }
   }
 
   function handleTextFocus(id: string) {
@@ -466,74 +711,139 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
   }
 
   function handleTextBlur(id: string, content: string) {
+    // Always save content on blur (covers clicking another element, tabbing away, etc.)
+    dispatch({ type: 'UPDATE_ELEMENT', slideId: slide.id, elementId: id, content: sanitizeHtml(content) })
     setEditingTextId(null)
     setShowFormatToolbar(false)
-    dispatch({ type: 'UPDATE_ELEMENT', slideId: slide.id, elementId: id, content })
   }
 
-  function getTransform(el: SlideElement): string | undefined {
-    if (el.type === 'connector') return undefined
-    const parts: string[] = []
-    if ('rotation' in el && el.rotation) parts.push(`rotate(${el.rotation}deg)`)
-    if ('flipH' in el && el.flipH) parts.push('scaleX(-1)')
-    if ('flipV' in el && el.flipV) parts.push('scaleY(-1)')
-    return parts.length > 0 ? parts.join(' ') : undefined
+  // Handle connector endpoint drag start
+  function handleConnectorEndpointMouseDown(
+    e: React.MouseEvent,
+    connId: string,
+    mode: 'from' | 'to',
+  ) {
+    e.stopPropagation()
+    setConnectorDragId(connId)
+    setConnectorDragMode(mode)
+    setSelectedIds(new Set([connId]))
   }
 
-  function getFilterStyle(el: SlideElement): React.CSSProperties {
-    const style: React.CSSProperties = {}
-    if ('opacity' in el && el.opacity !== undefined && el.opacity !== 100) {
-      style.opacity = el.opacity / 100
-    }
-    if ('shadow' in el && el.shadow) {
-      style.filter = `drop-shadow(${el.shadow.offsetX}px ${el.shadow.offsetY}px ${el.shadow.blur}px ${el.shadow.color})`
-    }
-    return style
+  // Canvas callbacks for the shared element renderer
+  const canvasCallbacks: CanvasCallbacks = {
+    onMouseDown: handleElementMouseDown,
+    onClick: selectElement,
+    onDoubleClick: (id: string) => {
+      const el = slide.elements.find(e => e.id === id)
+      if (!el) return
+      if (!handleElementDoubleClick(id)) {
+        if (el.type === 'image') setImageFiltersPanel(true)
+        else if (el.type === 'chart') setChartEditorPanel(true)
+      }
+    },
+    onContextMenu: handleContextMenu,
+    onConnectorEndpointMouseDown: handleConnectorEndpointMouseDown,
+    onTableEdit: (id: string) => { setEditingTableId(id); setSelectedIds(new Set([id])) },
+    onTableCellBlur: (elementId: string, row: number, col: number, value: string) => {
+      dispatch({ type: 'UPDATE_TABLE_CELL', slideId: slide.id, elementId, row, col, value: sanitizeHtml(value) })
+    },
+    isEditingTable: (id: string) => editingTableId === id,
+    selectedIds,
+    draggingId,
+    theme,
+    connectorDragId,
+    connectorDragMode,
+    connectorDragPoint,
+    colResizeDrag,
+    onColResizeStart: (e: React.MouseEvent, elementId: string, col: number, startWidth: number) => {
+      e.stopPropagation()
+      e.preventDefault()
+      const tableDiv = (e.currentTarget as HTMLElement).parentElement
+      if (!tableDiv) return
+      const tableRect = tableDiv.getBoundingClientRect()
+      setColResizeDrag({ elementId, col, startX: e.clientX, startWidth, currentX: e.clientX, tableLeft: tableRect.left, tableWidth: tableRect.width })
+    },
   }
 
   function renderElement(el: SlideElement) {
     const isSelected = selectedIds.has(el.id)
     const singleSelected = isSelected && selectedIds.size === 1
 
-    if (el.type === 'connector') {
-      const conn = el as SlideConnectorElement
-      return (
-        <svg
-          key={el.id}
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            width: '100%',
-            height: '100%',
-            pointerEvents: 'none',
-            zIndex: conn.zIndex ?? 0,
-          }}
-        >
-          <defs>
-            {conn.arrowHead && (
-              <marker id={`arrow-${conn.id}`} markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                <polygon points="0 0, 10 3.5, 0 7" fill={conn.stroke} />
-              </marker>
+    // Delegate connector, image, shape, video, audio, chart to shared renderer
+    if (el.type === 'connector' || el.type === 'image' || el.type === 'shape' ||
+        el.type === 'video' || el.type === 'audio' || el.type === 'chart') {
+      const shared = renderSlideElement(el, 'canvas', canvasCallbacks)
+      // Wrap with ResizeHandles for canvas mode (shared renderer does not include them)
+      if (el.type === 'connector') return shared
+      // For shape elements, add hover detection for connector anchor points
+      if (el.type === 'shape') {
+        const shapeEl = el as SlideShapeElement
+        const elH = shapeEl.h ?? shapeEl.w
+        return (
+          <div
+            key={`wrap-${el.id}`}
+            style={{ display: 'contents' } as React.CSSProperties}
+            onMouseEnter={() => setHoveredShapeId(el.id)}
+            onMouseLeave={() => setHoveredShapeId((prev) => (prev === el.id ? null : prev))}
+          >
+            {shared}
+            {/* Connector anchor points shown on hover */}
+            {hoveredShapeId === el.id && !connectorDragId && (
+              <>
+                {/* Top center */}
+                <div style={{ position: 'absolute', left: `${shapeEl.x + shapeEl.w / 2}%`, top: `${shapeEl.y}%`, width: 8, height: 8, borderRadius: '50%', background: 'rgba(59,130,246,0.7)', border: '1.5px solid #fff', transform: 'translate(-50%,-50%)', zIndex: 99996, pointerEvents: 'none' }} />
+                {/* Bottom center */}
+                <div style={{ position: 'absolute', left: `${shapeEl.x + shapeEl.w / 2}%`, top: `${shapeEl.y + elH}%`, width: 8, height: 8, borderRadius: '50%', background: 'rgba(59,130,246,0.7)', border: '1.5px solid #fff', transform: 'translate(-50%,-50%)', zIndex: 99996, pointerEvents: 'none' }} />
+                {/* Left center */}
+                <div style={{ position: 'absolute', left: `${shapeEl.x}%`, top: `${shapeEl.y + elH / 2}%`, width: 8, height: 8, borderRadius: '50%', background: 'rgba(59,130,246,0.7)', border: '1.5px solid #fff', transform: 'translate(-50%,-50%)', zIndex: 99996, pointerEvents: 'none' }} />
+                {/* Right center */}
+                <div style={{ position: 'absolute', left: `${shapeEl.x + shapeEl.w}%`, top: `${shapeEl.y + elH / 2}%`, width: 8, height: 8, borderRadius: '50%', background: 'rgba(59,130,246,0.7)', border: '1.5px solid #fff', transform: 'translate(-50%,-50%)', zIndex: 99996, pointerEvents: 'none' }} />
+              </>
             )}
-          </defs>
-          <line
-            x1={`${conn.fromPoint.x}%`}
-            y1={`${conn.fromPoint.y}%`}
-            x2={`${conn.toPoint.x}%`}
-            y2={`${conn.toPoint.y}%`}
-            stroke={conn.stroke}
-            strokeWidth={conn.strokeWidth || 2}
-            markerEnd={conn.arrowHead ? `url(#arrow-${conn.id})` : undefined}
-            style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-            onClick={(e) => selectElement(el.id, e as any)}
+            {singleSelected && (
+              <ResizeHandles
+                x={el.x}
+                y={el.y}
+                w={el.w}
+                h={elH}
+                rotation={el.rotation}
+                canvasRef={canvasRef}
+                onResize={(nx, ny, nw, nh) => handleResize(el.id, nx, ny, nw, nh)}
+                onRotate={(r) => handleRotate(el.id, r)}
+                snapToGrid={snapToGrid}
+                gridSize={gridSize}
+              />
+            )}
+          </div>
+        )
+      }
+      if (!singleSelected) return shared
+      return (
+        <div key={`wrap-${el.id}`} style={{ display: 'contents' } as React.CSSProperties}>
+          {shared}
+          <ResizeHandles
+            x={el.x}
+            y={el.y}
+            w={el.w}
+            h={(el as any).h ?? el.w}
+            rotation={el.rotation}
+            canvasRef={canvasRef}
+            onResize={(nx, ny, nw, nh) => handleResize(el.id, nx, ny, nw, nh)}
+            onRotate={el.type === 'audio' ? () => {} : (r) => handleRotate(el.id, r)}
+            snapToGrid={snapToGrid}
+            gridSize={gridSize}
           />
-        </svg>
+        </div>
       )
     }
 
+    // Table element: kept inline due to deep editing integration
     if (el.type === 'table') {
       const tableEl = el as SlideTableElement
+      const colCount = tableEl.rows[0]?.length || 1
+      const defaultColWidth = 100 / colCount
+      const colWidthsArr = tableEl.colWidths || Array(colCount).fill(defaultColWidth)
+      const totalColWidth = colWidthsArr.reduce((a: number, b: number) => a + b, 0)
       return (
         <div
           key={el.id}
@@ -547,13 +857,25 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
             transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
             outline: isSelected ? `2px solid ${theme.accentColor}` : 'none',
             cursor: draggingId === el.id ? 'grabbing' : 'grab',
-            overflow: 'auto',
+            opacity: draggingId === el.id ? 0.8 : 1,
+            boxShadow: draggingId === el.id ? '0 0 0 2px rgba(99,102,241,0.5)' : undefined,
+            overflow: 'visible',
           }}
-          onMouseDown={(e) => handleElementMouseDown(e, el)}
+          onMouseDown={(e) => {
+            if (editingTableId === el.id) return
+            handleElementMouseDown(e, el)
+          }}
           onClick={(e) => selectElement(el.id, e)}
+          onDoubleClick={() => { if (!handleElementDoubleClick(el.id)) { setEditingTableId(el.id); setSelectedIds(new Set([el.id])) } }}
           onContextMenu={handleContextMenu}
         >
-          <table className="w-full h-full border-collapse" style={{ fontSize: 'clamp(8px, 1.2vw, 14px)' }}>
+          {el.locked && <LockedBadge />}
+          <table className="w-full h-full border-collapse" style={{ fontSize: 'clamp(8px, 1.2vw, 14px)', tableLayout: 'fixed' }}>
+            <colgroup>
+              {colWidthsArr.map((cw: number, ci: number) => (
+                <col key={ci} style={{ width: `${(cw / totalColWidth) * 100}%` }} />
+              ))}
+            </colgroup>
             <tbody>
               {tableEl.rows.map((row, ri) => (
                 <tr key={ri}>
@@ -562,7 +884,7 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
                       key={ci}
                       className={`border border-slate-500/50 px-1 py-0.5 ${ri === 0 && tableEl.headerRow ? 'font-semibold bg-white/10' : ''}`}
                       style={{ color: theme.bodyColor }}
-                      contentEditable={isSelected}
+                      contentEditable={editingTableId === el.id}
                       suppressContentEditableWarning
                       onBlur={(e) => {
                         dispatch({
@@ -571,7 +893,7 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
                           elementId: el.id,
                           row: ri,
                           col: ci,
-                          value: e.currentTarget.innerText,
+                          value: sanitizeHtml(e.currentTarget.innerHTML),
                         })
                       }}
                     >
@@ -582,6 +904,83 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
               ))}
             </tbody>
           </table>
+          {/* Column resize handles */}
+          {isSelected && colWidthsArr.length > 1 && (() => {
+            let accPct = 0
+            return colWidthsArr.slice(0, -1).map((cw: number, ci: number) => {
+              accPct += (cw / totalColWidth) * 100
+              return (
+                <div
+                  key={`col-resize-${ci}`}
+                  style={{
+                    position: 'absolute',
+                    left: `${accPct}%`,
+                    top: 0,
+                    width: '6px',
+                    height: '100%',
+                    transform: 'translateX(-3px)',
+                    cursor: 'col-resize',
+                    zIndex: 20,
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    const tableDiv = e.currentTarget.parentElement
+                    if (!tableDiv) return
+                    const tableRect = tableDiv.getBoundingClientRect()
+                    setColResizeDrag({
+                      elementId: el.id,
+                      col: ci,
+                      startX: e.clientX,
+                      startWidth: cw,
+                      currentX: e.clientX,
+                      tableLeft: tableRect.left,
+                      tableWidth: tableRect.width,
+                    })
+                  }}
+                >
+                  <div
+                    className="w-0.5 h-full mx-auto transition-colors"
+                    style={{
+                      backgroundColor: colResizeDrag?.elementId === el.id && colResizeDrag?.col === ci
+                        ? '#3b82f6'
+                        : 'transparent',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!colResizeDrag) (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(99,102,241,0.5)'
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!colResizeDrag || colResizeDrag.col !== ci) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
+                    }}
+                  />
+                </div>
+              )
+            })
+          })()}
+          {/* Column resize drag preview line */}
+          {colResizeDrag && colResizeDrag.elementId === el.id && (() => {
+            const deltaX = colResizeDrag.currentX - colResizeDrag.startX
+            const deltaPct = (deltaX / colResizeDrag.tableWidth) * 100
+            let accPct = 0
+            for (let i = 0; i <= colResizeDrag.col; i++) {
+              accPct += (colWidthsArr[i] / totalColWidth) * 100
+            }
+            const newPos = Math.max(5, Math.min(95, accPct + deltaPct))
+            return (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: `${newPos}%`,
+                  top: 0,
+                  width: '2px',
+                  height: '100%',
+                  backgroundColor: '#3b82f6',
+                  zIndex: 30,
+                  pointerEvents: 'none',
+                }}
+              />
+            )
+          })()}
           {singleSelected && (
             <ResizeHandles
               x={el.x}
@@ -592,401 +991,16 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
               canvasRef={canvasRef}
               onResize={(nx, ny, nw, nh) => handleResize(el.id, nx, ny, nw, nh)}
               onRotate={(r) => handleRotate(el.id, r)}
+              snapToGrid={snapToGrid}
+              gridSize={gridSize}
             />
           )}
         </div>
       )
     }
 
-    if (el.type === 'image') {
-      const imgFilter =
-        [
-          el.brightness !== undefined && el.brightness !== 100 ? `brightness(${el.brightness}%)` : '',
-          el.contrast !== undefined && el.contrast !== 100 ? `contrast(${el.contrast}%)` : '',
-          el.blur ? `blur(${el.blur}px)` : '',
-        ]
-          .filter(Boolean)
-          .join(' ') || undefined
-      return (
-        <div
-          key={el.id}
-          style={{
-            position: 'absolute',
-            left: `${el.x}%`,
-            top: `${el.y}%`,
-            width: `${el.w}%`,
-            height: `${el.h}%`,
-            cursor: draggingId === el.id ? 'grabbing' : 'grab',
-            outline: isSelected ? `2px solid ${theme.accentColor}` : 'none',
-            borderRadius: '4px',
-            overflow: 'hidden',
-            zIndex: el.zIndex ?? 0,
-            transform: getTransform(el),
-            ...getFilterStyle(el),
-          }}
-          onMouseDown={(e) => handleElementMouseDown(e, el)}
-          onClick={(e) => selectElement(el.id, e)}
-          onDoubleClick={() => setImageFiltersPanel(true)}
-          onContextMenu={handleContextMenu}
-        >
-          <img
-            src={el.src}
-            alt={el.alt || ''}
-            className="w-full h-full object-contain pointer-events-none"
-            draggable={false}
-            style={{ filter: imgFilter }}
-          />
-          {isSelected && 'locked' in el && el.locked && (
-            <div className="absolute top-1 right-1 text-xs bg-black/50 text-white/60 rounded px-1">🔒</div>
-          )}
-          {singleSelected && (
-            <ResizeHandles
-              x={el.x}
-              y={el.y}
-              w={el.w}
-              h={el.h}
-              rotation={el.rotation}
-              canvasRef={canvasRef}
-              onResize={(nx, ny, nw, nh) => handleResize(el.id, nx, ny, nw, nh)}
-              onRotate={(r) => handleRotate(el.id, r)}
-            />
-          )}
-        </div>
-      )
-    }
-
-    if (el.type === 'shape') {
-      const fillId = `grad-${el.id}`
-      const useFill = el.gradientFill ? `url(#${fillId})` : el.fill
-      const sw = el.strokeWidth ?? 2
-      const dashArray = el.strokeDash === 'dashed' ? '8,4' : el.strokeDash === 'dotted' ? '2,4' : undefined
-      const shapeMap: Record<string, React.ReactNode> = {
-        rect: (
-          <rect
-            x="2"
-            y="2"
-            width="96"
-            height="96"
-            rx="4"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        circle: (
-          <ellipse
-            cx="50"
-            cy="50"
-            rx="48"
-            ry="48"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        triangle: (
-          <polygon
-            points="50,5 95,95 5,95"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        'arrow-right': (
-          <polygon
-            points="0,25 65,25 65,5 100,50 65,95 65,75 0,75"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        'arrow-left': (
-          <polygon
-            points="100,25 35,25 35,5 0,50 35,95 35,75 100,75"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        'arrow-up': (
-          <polygon
-            points="25,100 25,35 5,35 50,0 95,35 75,35 75,100"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        'arrow-down': (
-          <polygon
-            points="25,0 25,65 5,65 50,100 95,65 75,65 75,0"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        line: <line x1="0" y1="50" x2="100" y2="50" stroke={el.fill} strokeWidth="4" strokeDasharray={dashArray} />,
-        star: (
-          <polygon
-            points="50,5 61,35 95,35 68,57 79,90 50,70 21,90 32,57 5,35 39,35"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        diamond: (
-          <polygon
-            points="50,2 98,50 50,98 2,50"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        hexagon: (
-          <polygon
-            points="25,5 75,5 98,50 75,95 25,95 2,50"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        pentagon: (
-          <polygon
-            points="50,5 97,38 80,95 20,95 3,38"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        heart: (
-          <path
-            d="M50,88 C25,65 2,45 2,28 C2,12 15,2 28,2 C38,2 46,8 50,18 C54,8 62,2 72,2 C85,2 98,12 98,28 C98,45 75,65 50,88Z"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-        callout: (
-          <>
-            <rect
-              x="2"
-              y="2"
-              width="96"
-              height="70"
-              rx="8"
-              fill={useFill}
-              stroke={el.stroke || 'none'}
-              strokeWidth={sw}
-              strokeDasharray={dashArray}
-            />
-            <polygon points="20,72 35,95 45,72" fill={useFill} />
-          </>
-        ),
-        cross: (
-          <polygon
-            points="35,2 65,2 65,35 98,35 98,65 65,65 65,98 35,98 35,65 2,65 2,35 35,35"
-            fill={useFill}
-            stroke={el.stroke || 'none'}
-            strokeWidth={sw}
-            strokeDasharray={dashArray}
-          />
-        ),
-      }
-
-      return (
-        <div
-          key={el.id}
-          style={{
-            position: 'absolute',
-            left: `${el.x}%`,
-            top: `${el.y}%`,
-            width: `${el.w}%`,
-            height: `${el.h}%`,
-            cursor: draggingId === el.id ? 'grabbing' : 'grab',
-            outline: isSelected ? `2px solid ${theme.accentColor}` : 'none',
-            zIndex: el.zIndex ?? 0,
-            transform: getTransform(el),
-            ...getFilterStyle(el),
-          }}
-          onMouseDown={(e) => handleElementMouseDown(e, el)}
-          onClick={(e) => selectElement(el.id, e)}
-          onContextMenu={handleContextMenu}
-        >
-          <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
-            {el.gradientFill && (
-              <defs>
-                <linearGradient id={fillId} gradientTransform={`rotate(${el.gradientFill.angle})`}>
-                  <stop offset="0%" stopColor={el.gradientFill.color1} />
-                  <stop offset="100%" stopColor={el.gradientFill.color2} />
-                </linearGradient>
-              </defs>
-            )}
-            {shapeMap[el.shape] || shapeMap.rect}
-          </svg>
-          {el.textContent && (
-            <div
-              className="absolute inset-0 flex items-center justify-center p-1"
-              style={{
-                color: el.textColor || '#ffffff',
-                fontSize: `clamp(8px, ${(el.textFontSize || 14) * 0.055}vw, ${el.textFontSize || 14}px)`,
-                textAlign: 'center',
-                wordBreak: 'break-word',
-                overflow: 'hidden',
-              }}
-            >
-              {el.textContent}
-            </div>
-          )}
-          {singleSelected && (
-            <ResizeHandles
-              x={el.x}
-              y={el.y}
-              w={el.w}
-              h={el.h}
-              rotation={el.rotation}
-              canvasRef={canvasRef}
-              onResize={(nx, ny, nw, nh) => handleResize(el.id, nx, ny, nw, nh)}
-              onRotate={(r) => handleRotate(el.id, r)}
-            />
-          )}
-        </div>
-      )
-    }
-
-    // Video element
-    if (el.type === 'video') {
-      return (
-        <div
-          key={el.id}
-          style={{
-            position: 'absolute',
-            left: `${el.x}%`,
-            top: `${el.y}%`,
-            width: `${el.w}%`,
-            height: `${el.h}%`,
-            zIndex: el.zIndex ?? 0,
-            transform: getTransform(el),
-            outline: isSelected ? `2px solid ${theme.accentColor}` : 'none',
-            cursor: draggingId === el.id ? 'grabbing' : 'grab',
-            ...getFilterStyle(el),
-          }}
-          onMouseDown={(e) => handleElementMouseDown(e, el)}
-          onClick={(e) => selectElement(el.id, e)}
-          onContextMenu={handleContextMenu}
-        >
-          {el.embedType === 'youtube' ? (
-            <iframe src={el.src} className="w-full h-full rounded pointer-events-none" allowFullScreen />
-          ) : (
-            <video src={el.src} className="w-full h-full rounded object-contain" controls={isSelected} />
-          )}
-          {singleSelected && (
-            <ResizeHandles
-              x={el.x}
-              y={el.y}
-              w={el.w}
-              h={el.h}
-              rotation={el.rotation}
-              canvasRef={canvasRef}
-              onResize={(nx, ny, nw, nh) => handleResize(el.id, nx, ny, nw, nh)}
-              onRotate={(r) => handleRotate(el.id, r)}
-            />
-          )}
-        </div>
-      )
-    }
-
-    // Audio element
-    if (el.type === 'audio') {
-      return (
-        <div
-          key={el.id}
-          style={{
-            position: 'absolute',
-            left: `${el.x}%`,
-            top: `${el.y}%`,
-            width: `${el.w}%`,
-            height: `${el.h}%`,
-            zIndex: el.zIndex ?? 0,
-            outline: isSelected ? `2px solid ${theme.accentColor}` : 'none',
-            cursor: draggingId === el.id ? 'grabbing' : 'grab',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(15,23,42,0.6)',
-            borderRadius: '8px',
-            ...getFilterStyle(el),
-          }}
-          onMouseDown={(e) => handleElementMouseDown(e, el)}
-          onClick={(e) => selectElement(el.id, e)}
-          onContextMenu={handleContextMenu}
-        >
-          <audio src={el.src} controls className="w-[90%]" />
-          {singleSelected && (
-            <ResizeHandles
-              x={el.x}
-              y={el.y}
-              w={el.w}
-              h={el.h}
-              canvasRef={canvasRef}
-              onResize={(nx, ny, nw, nh) => handleResize(el.id, nx, ny, nw, nh)}
-              onRotate={() => {}}
-            />
-          )}
-        </div>
-      )
-    }
-
-    // Chart element
-    if (el.type === 'chart') {
-      return (
-        <div
-          key={el.id}
-          style={{
-            position: 'absolute',
-            left: `${el.x}%`,
-            top: `${el.y}%`,
-            width: `${el.w}%`,
-            height: `${el.h}%`,
-            zIndex: el.zIndex ?? 0,
-            transform: getTransform(el),
-            outline: isSelected ? `2px solid ${theme.accentColor}` : 'none',
-            cursor: draggingId === el.id ? 'grabbing' : 'grab',
-            ...getFilterStyle(el),
-          }}
-          onMouseDown={(e) => handleElementMouseDown(e, el)}
-          onClick={(e) => selectElement(el.id, e)}
-          onDoubleClick={() => setChartEditorPanel(true)}
-          onContextMenu={handleContextMenu}
-        >
-          <ChartRenderer chart={el} />
-          {singleSelected && (
-            <ResizeHandles
-              x={el.x}
-              y={el.y}
-              w={el.w}
-              h={el.h}
-              rotation={el.rotation}
-              canvasRef={canvasRef}
-              onResize={(nx, ny, nw, nh) => handleResize(el.id, nx, ny, nw, nh)}
-              onRotate={(r) => handleRotate(el.id, r)}
-            />
-          )}
-        </div>
-      )
-    }
-
-    // Text element
+    // Text element: kept inline due to deep editing integration
+    const isEditingThis = editingTextId === el.id
     return (
       <div
         key={el.id}
@@ -996,25 +1010,69 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
           top: `${el.y}%`,
           width: `${el.w}%`,
           height: el.h ? `${el.h}%` : undefined,
-          zIndex: el.zIndex ?? 0,
+          zIndex: isEditingThis ? 999 : (el.zIndex ?? 0),
           transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
-          outline: isSelected && editingTextId !== el.id ? `2px solid ${theme.accentColor}40` : 'none',
+          outline: isSelected && !isEditingThis ? `2px solid ${theme.accentColor}40` : 'none',
+          cursor: draggingId === el.id ? 'grabbing' : (isEditingThis ? undefined : 'grab'),
+          overflow: el.autoSize === 'shrink' ? 'hidden' : undefined,
+          opacity: draggingId === el.id ? 0.8 : 1,
+          boxShadow: draggingId === el.id ? '0 0 0 2px rgba(99,102,241,0.5)' : undefined,
         }}
         onMouseDown={(e) => {
-          if (editingTextId !== el.id) handleElementMouseDown(e, el)
+          if (!isEditingThis) handleElementMouseDown(e, el)
         }}
         onClick={(e) => selectElement(el.id, e)}
-        onDoubleClick={() => handleTextFocus(el.id)}
+        onDoubleClick={() => {
+          if (!handleElementDoubleClick(el.id)) {
+            handleTextFocus(el.id)
+          }
+        }}
         onContextMenu={handleContextMenu}
       >
+        {el.locked && <LockedBadge />}
         <SlideTextBlock
           element={el}
           theme={theme}
-          isEditing={editingTextId === el.id}
+          isEditing={isEditingThis}
           onFocus={() => handleTextFocus(el.id)}
           onBlur={(content) => handleTextBlur(el.id, content)}
+          onResize={el.autoSize === 'grow' ? (newH: number) => {
+            dispatch({ type: 'UPDATE_ELEMENT_SIZE', slideId: slide.id, elementId: el.id, w: el.w, h: newH })
+          } : undefined}
         />
-        {singleSelected && editingTextId !== el.id && (
+        {/* Confirm / Cancel buttons while editing */}
+        {isEditingThis && (
+          <div
+            className="absolute left-0 flex items-center gap-1.5 mt-1 z-[1000]"
+            style={{ top: '100%' }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg shadow-lg transition-colors active:scale-95"
+              onClick={(e) => {
+                e.stopPropagation()
+                commitEditingText()
+              }}
+            >
+              ✓ 確定
+            </button>
+            <button
+              className="flex items-center gap-1 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs rounded-lg shadow-lg transition-colors active:scale-95"
+              onClick={(e) => {
+                e.stopPropagation()
+                // Revert DOM to original content and exit
+                const editEl = document.querySelector<HTMLElement>('[contenteditable="true"]')
+                if (editEl) editEl.innerHTML = el.content
+                setEditingTextId(null)
+                setShowFormatToolbar(false)
+              }}
+            >
+              ✕ キャンセル
+            </button>
+            <span className="text-[10px] text-slate-500 ml-1 whitespace-nowrap">Esc でキャンセル</span>
+          </div>
+        )}
+        {singleSelected && !isEditingThis && (
           <ResizeHandles
             x={el.x}
             y={el.y}
@@ -1024,6 +1082,8 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
             canvasRef={canvasRef}
             onResize={(nx, ny, nw, nh) => handleResize(el.id, nx, ny, nw, nh)}
             onRotate={(r) => handleRotate(el.id, r)}
+            snapToGrid={snapToGrid}
+            gridSize={gridSize}
           />
         )}
       </div>
@@ -1051,31 +1111,13 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
         }
       }}
     >
-      {/* Zoom & Grid controls */}
+      {/* Grid controls */}
       <div className="mb-2 flex items-center gap-2">
-        <button
-          onClick={() => setZoom((z) => Math.max(50, z - 10))}
-          className="w-6 h-6 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:text-white text-xs border border-slate-700"
-        >
-          −
-        </button>
-        <span className="text-xs text-slate-400 w-10 text-center">{zoom}%</span>
-        <button
-          onClick={() => setZoom((z) => Math.min(200, z + 10))}
-          className="w-6 h-6 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:text-white text-xs border border-slate-700"
-        >
-          +
-        </button>
-        <button
-          onClick={() => setZoom(100)}
-          className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-white text-[10px] border border-slate-700"
-        >
-          100%
-        </button>
-        <div className="w-px h-4 bg-slate-700" />
         <button
           onClick={() => setShowGrid(!showGrid)}
           className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${showGrid ? 'bg-indigo-500/20 border-indigo-500 text-indigo-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
+          aria-label="グリッド表示切替"
+          aria-pressed={showGrid}
         >
           グリッド
         </button>
@@ -1083,10 +1125,19 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
           <button
             onClick={() => setSnapToGrid(!snapToGrid)}
             className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${snapToGrid ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
+            aria-label="グリッドスナップ切替"
+            aria-pressed={snapToGrid}
           >
             スナップ
           </button>
         )}
+        <button
+          onClick={() => setShowRuler(!showRuler)}
+          className={`px-2 py-1 text-xs rounded ${showRuler ? 'bg-indigo-500/30 text-indigo-300' : 'text-slate-400 hover:text-white'}`}
+          title="ルーラー表示"
+        >
+          📏
+        </button>
       </div>
 
       {/* Alignment toolbar */}
@@ -1136,22 +1187,64 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
         </div>
       )}
 
+      {showRuler && (
+        <SlideRuler
+          width={960}
+          height={540}
+          zoom={zoom}
+          showHorizontal
+          showVertical
+          guides={guides}
+          onAddGuide={(o, p) => setGuides([...guides, { orientation: o, position: p }])}
+        />
+      )}
+
+      {rulerVisible && (
+        <div className="relative">
+          <CanvasRuler width={960} height={540} zoom={zoom} visible={rulerVisible} />
+        </div>
+      )}
+
       <div
         className="w-full max-w-4xl"
         style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center', transition: 'transform 0.15s ease' }}
       >
         <div
           ref={canvasRef}
+          data-slide-canvas
+          role="region"
+          aria-label="スライドキャンバス"
           className={`relative w-full shadow-2xl rounded-lg overflow-hidden slide-print-page ${editingTextId ? '' : 'select-none'}`}
-          style={bgStyle}
+          style={{ ...bgStyle, ...(dragOver ? { outline: '3px dashed #3b82f6', outlineOffset: '-3px', boxShadow: 'inset 0 0 30px rgba(59,130,246,0.15)' } : {}), ...(altDragging ? { cursor: 'copy' } : {}) }}
           onMouseDown={handleCanvasMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onContextMenu={handleContextMenu}
-          onDragOver={(e) => e.preventDefault()}
+          onDragOver={(e) => {
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'copy'
+            setDragOver(true)
+          }}
+          onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
         >
+          {/* Drop zone overlay */}
+          {dragOver && (
+            <div
+              className="absolute inset-0 z-[99999] flex items-center justify-center pointer-events-none"
+              style={{ background: 'rgba(59,130,246,0.08)' }}
+            >
+              <div className="flex flex-col items-center gap-2 text-blue-400">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M12 8v8M8 12h8" />
+                </svg>
+                <span className="text-xs font-medium">画像をドロップ</span>
+              </div>
+            </div>
+          )}
+
           {/* Grid overlay */}
           {showGrid && (
             <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
@@ -1197,45 +1290,301 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
             </svg>
           )}
 
+          {/* External grid overlay from props */}
+          <CanvasGrid visible={gridVisible} />
+
+          {/* Guide lines */}
+          {guides.map((g, i) => (
+            <div
+              key={`guide-${i}`}
+              className="absolute bg-cyan-400/60 z-[100]"
+              style={g.orientation === 'h'
+                ? { left: 0, right: 0, top: `${g.position}%`, height: '1px' }
+                : { top: 0, bottom: 0, left: `${g.position}%`, width: '1px' }
+              }
+            />
+          ))}
+
           {sortedElements.map(renderElement)}
 
-          {/* Smart guides */}
+          {/* Smart guides with snap glow effect */}
           {smartGuides.length > 0 && (
+            <>
+              <style>{`
+                @keyframes snapPulse {
+                  0% { stroke-width: 2; opacity: 1; }
+                  50% { stroke-width: 3; opacity: 0.8; }
+                  100% { stroke-width: 1.5; opacity: 1; }
+                }
+              `}</style>
+              <svg
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                style={{ zIndex: 99998 }}
+              >
+                {smartGuides.map((g, i) => {
+                  const color = g.type === 'center' ? '#00d4ff' : g.type === 'spacing' ? '#10b981' : '#00d4ff'
+                  return (
+                    <g key={i}>
+                      {g.x !== undefined && (
+                        <>
+                          {/* Glow line */}
+                          <line
+                            x1={`${g.x}%`}
+                            y1="0"
+                            x2={`${g.x}%`}
+                            y2="100%"
+                            stroke={color}
+                            strokeWidth="3"
+                            strokeDasharray="4,3"
+                            opacity="0.3"
+                          />
+                          <line
+                            x1={`${g.x}%`}
+                            y1="0"
+                            x2={`${g.x}%`}
+                            y2="100%"
+                            stroke={color}
+                            strokeWidth="1.5"
+                            strokeDasharray="4,3"
+                            style={{ animation: 'snapPulse 0.3s ease-out' }}
+                          />
+                        </>
+                      )}
+                      {g.y !== undefined && (
+                        <>
+                          <line
+                            x1="0"
+                            y1={`${g.y}%`}
+                            x2="100%"
+                            y2={`${g.y}%`}
+                            stroke={color}
+                            strokeWidth="3"
+                            strokeDasharray="4,3"
+                            opacity="0.3"
+                          />
+                          <line
+                            x1="0"
+                            y1={`${g.y}%`}
+                            x2="100%"
+                            y2={`${g.y}%`}
+                            stroke={color}
+                            strokeWidth="1.5"
+                            strokeDasharray="4,3"
+                            style={{ animation: 'snapPulse 0.3s ease-out' }}
+                          />
+                        </>
+                      )}
+                    </g>
+                  )
+                })}
+              </svg>
+            </>
+          )}
+
+          {/* Distance labels on spacing guides */}
+          {smartGuides.filter(g => g.type === 'spacing').map((guide, i) => (
+            <span key={`dist-${i}`} className="absolute text-[8px] text-green-300 bg-slate-900/80 px-0.5 rounded pointer-events-none z-[99999]"
+              style={{ left: `${guide.x ?? 0}%`, top: `${(guide.y ?? 0) - 2}%` }}>
+              {Math.abs((guide as any).distance || 0).toFixed(1)}%
+            </span>
+          ))}
+
+          {/* Snap guide lines (bright cyan) */}
+          {snapGuides.map((guide, i) => (
+            <div
+              key={`snap-guide-${i}`}
+              style={{
+                position: 'absolute',
+                zIndex: 99998,
+                pointerEvents: 'none',
+                ...(guide.type === 'horizontal'
+                  ? { left: 0, right: 0, top: `${guide.position}%`, height: 0, borderTop: '1.5px dashed #00d4ff' }
+                  : { top: 0, bottom: 0, left: `${guide.position}%`, width: 0, borderLeft: '1.5px dashed #00d4ff' }
+                ),
+              }}
+            />
+          ))}
+
+          {/* Connector anchor points overlay - shown when dragging connector endpoints */}
+          {connectorDragId && connectorDragMode && (
             <svg
               className="absolute inset-0 w-full h-full pointer-events-none"
-              style={{ zIndex: 99998 }}
+              style={{ zIndex: 99997 }}
             >
-              {smartGuides.map((g, i) => {
-                const color = g.type === 'center' ? '#3b82f6' : g.type === 'spacing' ? '#10b981' : '#ef4444'
-                return (
-                  <g key={i}>
-                    {g.x !== undefined && (
-                      <line
-                        x1={`${g.x}%`}
-                        y1="0"
-                        x2={`${g.x}%`}
-                        y2="100%"
-                        stroke={color}
-                        strokeWidth="1"
-                        strokeDasharray="4,3"
+              {slide.elements
+                .filter((el) => el.type !== 'connector')
+                .flatMap((el) =>
+                  getAnchorPoints(el).map((anchor) => {
+                    const dist = connectorDragPoint
+                      ? Math.sqrt((anchor.x - connectorDragPoint.x) ** 2 + (anchor.y - connectorDragPoint.y) ** 2)
+                      : Infinity
+                    const isNear = dist < ANCHOR_SNAP_THRESHOLD
+                    return (
+                      <circle
+                        key={`anchor-${el.id}-${anchor.label}`}
+                        cx={`${anchor.x}%`}
+                        cy={`${anchor.y}%`}
+                        r={isNear ? 6 : 4}
+                        fill={isNear ? '#3b82f6' : 'rgba(59, 130, 246, 0.5)'}
+                        stroke={isNear ? '#ffffff' : '#3b82f6'}
+                        strokeWidth={isNear ? 2 : 1}
                       />
-                    )}
-                    {g.y !== undefined && (
-                      <line
-                        x1="0"
-                        y1={`${g.y}%`}
-                        x2="100%"
-                        y2={`${g.y}%`}
-                        stroke={color}
-                        strokeWidth="1"
-                        strokeDasharray="4,3"
-                      />
-                    )}
-                  </g>
-                )
-              })}
+                    )
+                  }),
+                )}
             </svg>
           )}
+
+          {/* Multi-selection bounding box with resize handles */}
+          {selectedIds.size > 1 && slide && (() => {
+            const selEls = slide.elements.filter(el => selectedIds.has(el.id) && el.type !== 'connector') as Exclude<SlideElement, SlideConnectorElement>[]
+            if (selEls.length < 2) return null
+            const minX = Math.min(...selEls.map(el => el.x))
+            const minY = Math.min(...selEls.map(el => el.y))
+            const maxX = Math.max(...selEls.map(el => el.x + el.w))
+            const maxY = Math.max(...selEls.map(el => el.y + (el as any).h))
+            const bbW = maxX - minX
+            const bbH = maxY - minY
+            return (
+              <div className="absolute border-2 border-dashed border-indigo-400/50 z-[90]"
+                style={{ left: `${minX}%`, top: `${minY}%`, width: `${bbW}%`, height: `${bbH}%`, pointerEvents: 'none' }}
+              >
+                <div style={{ pointerEvents: 'auto' }}>
+                  <ResizeHandles
+                    x={minX}
+                    y={minY}
+                    w={bbW}
+                    h={bbH}
+                    canvasRef={canvasRef}
+                    onResize={(nx, ny, nw, nh) => {
+                      // Scale all selected elements proportionally
+                      const scaleX = bbW > 0 ? nw / bbW : 1
+                      const scaleY = bbH > 0 ? nh / bbH : 1
+                      const moves: { elementId: string; x: number; y: number }[] = []
+                      for (const el of selEls) {
+                        const relX = el.x - minX
+                        const relY = el.y - minY
+                        const newElX = nx + relX * scaleX
+                        const newElY = ny + relY * scaleY
+                        const newElW = el.w * scaleX
+                        const newElH = ((el as any).h ?? 0) * scaleY
+                        moves.push({ elementId: el.id, x: newElX, y: newElY })
+                        dispatch({ type: 'UPDATE_ELEMENT_SIZE', slideId: slide.id, elementId: el.id, w: Math.max(2, newElW), h: Math.max(2, newElH) })
+                      }
+                      dispatch({ type: 'UPDATE_ELEMENTS_POSITION', slideId: slide.id, moves })
+                    }}
+                    onRotate={() => {}}
+                    snapToGrid={snapToGrid}
+                    gridSize={gridSize}
+                  />
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Group selection bounding box */}
+          {selectedIds.size > 1 && slide && (() => {
+            // Find groups among selected elements
+            const selEls = slide.elements.filter(el => selectedIds.has(el.id))
+            const groupIds = new Set<string>()
+            selEls.forEach(el => {
+              if ((el as any).groupId) groupIds.add((el as any).groupId)
+            })
+            if (groupIds.size === 0) return null
+            return Array.from(groupIds).map(gid => {
+              const groupEls = slide.elements.filter(el => (el as any).groupId === gid && el.type !== 'connector') as Exclude<SlideElement, SlideConnectorElement>[]
+              if (groupEls.length < 2) return null
+              const gMinX = Math.min(...groupEls.map(el => el.x))
+              const gMinY = Math.min(...groupEls.map(el => el.y))
+              const gMaxX = Math.max(...groupEls.map(el => el.x + el.w))
+              const gMaxY = Math.max(...groupEls.map(el => el.y + ((el as any).h ?? 0)))
+              return (
+                <div
+                  key={`group-${gid}`}
+                  className="absolute border-2 border-dashed border-blue-400/60 z-[89] pointer-events-none"
+                  style={{ left: `${gMinX - 0.5}%`, top: `${gMinY - 0.5}%`, width: `${gMaxX - gMinX + 1}%`, height: `${gMaxY - gMinY + 1}%` }}
+                />
+              )
+            })
+          })()}
+
+          {/* Watermark overlay */}
+          {watermarkConfig?.enabled && (() => {
+            const wmStyle: React.CSSProperties = {
+              position: 'absolute',
+              pointerEvents: 'none',
+              zIndex: 99990,
+              color: watermarkConfig.color,
+              opacity: watermarkConfig.opacity / 100,
+              fontSize: `${watermarkConfig.fontSize * (zoom / 100)}px`,
+              fontWeight: 'bold',
+              userSelect: 'none',
+              whiteSpace: 'nowrap',
+            }
+            if (watermarkConfig.position === 'center') {
+              return (
+                <div style={{ ...wmStyle, inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ transform: `rotate(${watermarkConfig.rotation}deg)` }}>{watermarkConfig.text}</span>
+                </div>
+              )
+            }
+            if (watermarkConfig.position === 'bottom-right') {
+              return (
+                <div style={{ ...wmStyle, bottom: '4%', right: '4%' }}>
+                  <span style={{ transform: `rotate(${watermarkConfig.rotation}deg)`, display: 'inline-block' }}>{watermarkConfig.text}</span>
+                </div>
+              )
+            }
+            // diagonal: repeat watermark text in a grid pattern
+            const items: React.ReactNode[] = []
+            for (let row = 0; row < 5; row++) {
+              for (let col = 0; col < 3; col++) {
+                items.push(
+                  <div
+                    key={`wm-${row}-${col}`}
+                    style={{
+                      position: 'absolute',
+                      left: `${col * 35 + 5}%`,
+                      top: `${row * 22 + 5}%`,
+                      transform: `rotate(${watermarkConfig.rotation}deg)`,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {watermarkConfig.text}
+                  </div>
+                )
+              }
+            }
+            return <div style={{ ...wmStyle, inset: 0, overflow: 'hidden' }}>{items}</div>
+          })()}
+
+          {/* Slide number overlay */}
+          {state.globalFooter?.showSlideNumber && (() => {
+            // Hide on title slide: skip if first element is a title-type element or if slide is the first slide with a title
+            const hideOnTitle = (state.globalFooter as any)?.hideSlideNumberOnTitle
+            if (hideOnTitle) {
+              const firstEl = slide.elements[0]
+              if (firstEl && (firstEl.type === 'title' || firstEl.type === 'subtitle') && slide.elements.filter(e => e.type === 'body').length === 0) {
+                return null
+              }
+            }
+            return (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '2%',
+                  right: '3%',
+                  fontSize: '10px',
+                  color: '#94a3b8',
+                  pointerEvents: 'none',
+                  zIndex: 99990,
+                  userSelect: 'none',
+                }}
+              >
+                {state.slides.findIndex((s) => s.id === slide.id) + 1} / {state.slides.length}
+              </div>
+            )
+          })()}
 
           {/* Rubber band selection */}
           {rubberBand && (
@@ -1360,6 +1709,23 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
           }}
           isLocked={slide.elements.some((el) => selectedIds.has(el.id) && 'locked' in el && el.locked)}
           onProperties={selectedIds.size === 1 ? () => setPropertiesPanel(true) : undefined}
+          element={selectedIds.size === 1 ? slide.elements.find((el) => selectedIds.has(el.id)) : undefined}
+          slideId={slide.id}
+          onUpdateProps={(sId, eId, props) => dispatch({ type: 'UPDATE_ELEMENT_PROPS', slideId: sId, elementId: eId, props })}
+          onCrop={
+            selectedIds.size === 1 &&
+            slide.elements.find((el) => selectedIds.has(el.id))?.type === 'image'
+              ? () => {
+                  const id = Array.from(selectedIds)[0]
+                  if (onCropOverlay) {
+                    onCropOverlay(id)
+                  } else {
+                    setCropModalElementId(id)
+                  }
+                  setContextMenu(null)
+                }
+              : undefined
+          }
         />
       )}
 
@@ -1393,6 +1759,7 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
                 dispatch({ type: 'UPDATE_ELEMENT_PROPS', slideId: slide.id, elementId: el.id, props })
               }
               onClose={() => setImageFiltersPanel(false)}
+              onCrop={() => onCropOverlay ? onCropOverlay(el.id) : setCropModalElementId(el.id)}
             />
           )
         })()}
@@ -1407,10 +1774,47 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
             <ChartDataEditor
               chart={el}
               onUpdate={(data) => dispatch({ type: 'UPDATE_CHART_DATA', slideId: slide.id, elementId: el.id, data })}
+              onUpdateProps={(props) => dispatch({ type: 'UPDATE_CHART_PROPS', slideId: slide.id, elementId: el.id, props })}
               onClose={() => setChartEditorPanel(false)}
             />
           )
         })()}
+
+      {/* Image crop modal */}
+      {cropModalElementId &&
+        (() => {
+          const el = slide.elements.find((e) => e.id === cropModalElementId)
+          if (!el || el.type !== 'image') return null
+          return (
+            <ImageCropModal
+              src={el.src}
+              currentCrop={el.crop}
+              onApply={(crop) => {
+                dispatch({
+                  type: 'UPDATE_ELEMENT_PROPS',
+                  slideId: slide.id,
+                  elementId: el.id,
+                  props: { crop },
+                })
+                setCropModalElementId(null)
+              }}
+              onClose={() => setCropModalElementId(null)}
+            />
+          )
+        })()}
+
+      {/* Size tooltip during resize */}
+      <ElementSizeTooltip visible={resizeTooltip.visible} x={resizeTooltip.x} y={resizeTooltip.y} width={resizeTooltip.w} height={resizeTooltip.h} />
+
+      {/* Drag position tooltip */}
+      {dragTooltip.visible && (
+        <div
+          className="fixed z-[9999] px-2 py-1 bg-slate-800/90 text-white text-xs font-mono rounded shadow-lg pointer-events-none whitespace-nowrap"
+          style={{ left: dragTooltip.clientX + 15, top: dragTooltip.clientY + 15 }}
+        >
+          X: {dragTooltip.elX.toFixed(1)}% Y: {dragTooltip.elY.toFixed(1)}%
+        </div>
+      )}
 
       {/* Hidden file input for image replace */}
       <input
@@ -1422,7 +1826,7 @@ export default function SlideCanvas({ state, dispatch, onSelectionChange }: Prop
           const file = e.target.files?.[0]
           if (!file || selectedIds.size !== 1) return
           if (isStorageNearLimit()) {
-            alert('ストレージ不足')
+            addToast('ストレージの容量が不足しています。', 'warning')
             return
           }
           const src = await fileToDataURL(file)

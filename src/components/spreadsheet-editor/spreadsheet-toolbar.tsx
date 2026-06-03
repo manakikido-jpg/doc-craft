@@ -34,6 +34,8 @@ import {
   ChevronUp,
   ChevronDown,
   BarChart3,
+  FunctionSquare,
+  PaintBucket,
 } from 'lucide-react'
 
 interface Props {
@@ -45,31 +47,31 @@ interface Props {
   dispatch: (action: UndoableAction<SpreadsheetAction>) => void
   onOpenChartPanel?: () => void
   onOpenPivot?: () => void
+  onInsertFunction?: (funcName: string, template: string) => void
+  formatPainterActive?: boolean
+  onFormatPainterStart?: () => void
 }
 
-const TEXT_COLORS = [
-  '#ffffff',
-  '#ef4444',
-  '#f97316',
-  '#eab308',
-  '#22c55e',
-  '#3b82f6',
-  '#8b5cf6',
-  '#ec4899',
-  '#64748b',
-  '#0f172a',
+const FONT_FAMILIES = [
+  { label: 'ゴシック', value: 'sans-serif' },
+  { label: '明朝', value: 'serif' },
+  { label: '等幅', value: 'monospace' },
+  { label: 'Yu Gothic', value: '"Yu Gothic", sans-serif' },
+  { label: 'Yu Mincho', value: '"Yu Mincho", serif' },
+  { label: 'Arial', value: 'Arial, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Times', value: '"Times New Roman", serif' },
 ]
-const BG_COLORS = [
-  'transparent',
-  '#991b1b',
-  '#9a3412',
-  '#854d0e',
-  '#166534',
-  '#1e40af',
-  '#5b21b6',
-  '#9d174d',
-  '#1e293b',
-  '#334155',
+
+const COLOR_ROWS = [
+  { label: 'グレー', colors: ['#ffffff', '#f1f5f9', '#cbd5e1', '#94a3b8', '#64748b', '#334155', '#1e293b', '#000000'] },
+  { label: '赤系', colors: ['#fecaca', '#fca5a5', '#f87171', '#ef4444', '#dc2626', '#b91c1c', '#991b1b', '#7f1d1d'] },
+  { label: '橙系', colors: ['#fed7aa', '#fdba74', '#fb923c', '#f97316', '#ea580c', '#c2410c', '#9a3412', '#7c2d12'] },
+  { label: '黄系', colors: ['#fef08a', '#fde047', '#facc15', '#eab308', '#ca8a04', '#a16207', '#854d0e', '#713f12'] },
+  { label: '緑系', colors: ['#bbf7d0', '#86efac', '#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534', '#14532d'] },
+  { label: '青系', colors: ['#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6', '#2563eb', '#1d4ed8', '#1e40af', '#1e3a8a'] },
+  { label: '紫系', colors: ['#ddd6fe', '#c4b5fd', '#a78bfa', '#8b5cf6', '#7c3aed', '#6d28d9', '#5b21b6', '#4c1d95'] },
+  { label: 'ピンク', colors: ['#fbcfe8', '#f9a8d4', '#f472b6', '#ec4899', '#db2777', '#be185d', '#9d174d', '#831843'] },
 ]
 
 const BORDER_OPTIONS: { value: string; label: string }[] = [
@@ -85,8 +87,12 @@ const BORDER_OPTIONS: { value: string; label: string }[] = [
 const NUMBER_FORMATS: { value: CellFormat['numberFormat']; label: string }[] = [
   { value: 'plain', label: '標準' },
   { value: 'number', label: '数値 (1,234)' },
+  { value: 'comma', label: '桁区切り (1,234.5)' },
   { value: 'percent', label: 'パーセント (%)' },
   { value: 'currency', label: '通貨 (¥)' },
+  { value: 'accounting', label: '会計 (¥, 負数は括弧)' },
+  { value: 'currencyUSD', label: '通貨 ($)' },
+  { value: 'currencyEUR', label: '通貨 (€)' },
   { value: 'date', label: '日付 (yyyy/mm/dd)' },
   { value: 'time', label: '時刻' },
   { value: 'scientific', label: '指数' },
@@ -100,6 +106,95 @@ const COND_RULES: { value: ConditionalFormat['rule']; label: string }[] = [
   { value: 'textContains', label: 'テキストを含む' },
   { value: 'isEmpty', label: '空白' },
   { value: 'isNotEmpty', label: '空白ではない' },
+]
+
+export interface FunctionDef {
+  name: string
+  desc: string
+  template: string  // 関数選択時にセルに自動入力されるテンプレート
+}
+
+const FUNCTION_CATEGORIES: { name: string; functions: FunctionDef[] }[] = [
+  {
+    name: '数学',
+    functions: [
+      { name: 'SUM', desc: '合計', template: '=SUM(A1:A10)' },
+      { name: 'AVERAGE', desc: '平均', template: '=AVERAGE(A1:A10)' },
+      { name: 'COUNT', desc: '数値の個数', template: '=COUNT(A1:A10)' },
+      { name: 'MAX', desc: '最大値', template: '=MAX(A1:A10)' },
+      { name: 'MIN', desc: '最小値', template: '=MIN(A1:A10)' },
+      { name: 'ROUND', desc: '四捨五入', template: '=ROUND(A1, 2)' },
+      { name: 'ABS', desc: '絶対値', template: '=ABS(A1)' },
+      { name: 'SQRT', desc: '平方根', template: '=SQRT(A1)' },
+      { name: 'POWER', desc: 'べき乗', template: '=POWER(A1, 2)' },
+      { name: 'MOD', desc: '剰余', template: '=MOD(A1, 3)' },
+    ],
+  },
+  {
+    name: '文字列',
+    functions: [
+      { name: 'CONCAT', desc: '文字列結合', template: '=CONCAT(A1, B1)' },
+      { name: 'LEN', desc: '文字数', template: '=LEN(A1)' },
+      { name: 'UPPER', desc: '大文字変換', template: '=UPPER(A1)' },
+      { name: 'LOWER', desc: '小文字変換', template: '=LOWER(A1)' },
+      { name: 'TRIM', desc: '空白除去', template: '=TRIM(A1)' },
+      { name: 'LEFT', desc: '左から抽出', template: '=LEFT(A1, 3)' },
+      { name: 'RIGHT', desc: '右から抽出', template: '=RIGHT(A1, 3)' },
+      { name: 'MID', desc: '中間抽出', template: '=MID(A1, 2, 3)' },
+      { name: 'FIND', desc: '検索位置', template: '=FIND("検索語", A1)' },
+      { name: 'SUBSTITUTE', desc: '置換', template: '=SUBSTITUTE(A1, "旧", "新")' },
+    ],
+  },
+  {
+    name: '論理',
+    functions: [
+      { name: 'IF', desc: '条件分岐', template: '=IF(A1>0, "正", "負")' },
+      { name: 'AND', desc: 'すべて真', template: '=AND(A1>0, B1>0)' },
+      { name: 'OR', desc: 'いずれか真', template: '=OR(A1>0, B1>0)' },
+      { name: 'NOT', desc: '論理否定', template: '=NOT(A1>0)' },
+      { name: 'IFERROR', desc: 'エラー時の値', template: '=IFERROR(A1/B1, 0)' },
+      { name: 'ISBLANK', desc: '空白判定', template: '=ISBLANK(A1)' },
+      { name: 'ISNUMBER', desc: '数値判定', template: '=ISNUMBER(A1)' },
+    ],
+  },
+  {
+    name: '日付',
+    functions: [
+      { name: 'TODAY', desc: '今日の日付', template: '=TODAY()' },
+      { name: 'NOW', desc: '現在の日時', template: '=NOW()' },
+      { name: 'DATE', desc: '日付作成', template: '=DATE(2025, 1, 15)' },
+      { name: 'YEAR', desc: '年を取得', template: '=YEAR(A1)' },
+      { name: 'MONTH', desc: '月を取得', template: '=MONTH(A1)' },
+      { name: 'DAY', desc: '日を取得', template: '=DAY(A1)' },
+    ],
+  },
+  {
+    name: '検索',
+    functions: [
+      { name: 'VLOOKUP', desc: '縦方向検索', template: '=VLOOKUP(A1, B1:D10, 2, 0)' },
+      { name: 'HLOOKUP', desc: '横方向検索', template: '=HLOOKUP(A1, B1:H3, 2, 0)' },
+      { name: 'INDEX', desc: '位置指定取得', template: '=INDEX(A1:C10, 2, 3)' },
+      { name: 'MATCH', desc: '検索位置', template: '=MATCH(A1, B1:B10, 0)' },
+    ],
+  },
+  {
+    name: '条件集計',
+    functions: [
+      { name: 'SUMIF', desc: '条件付き合計', template: '=SUMIF(A1:A10, ">0", B1:B10)' },
+      { name: 'COUNTIF', desc: '条件付き個数', template: '=COUNTIF(A1:A10, ">0")' },
+      { name: 'AVERAGEIF', desc: '条件付き平均', template: '=AVERAGEIF(A1:A10, ">0", B1:B10)' },
+      { name: 'SUMIFS', desc: '複数条件合計', template: '=SUMIFS(C1:C10, A1:A10, ">0", B1:B10, "<100")' },
+    ],
+  },
+  {
+    name: '統計',
+    functions: [
+      { name: 'MEDIAN', desc: '中央値', template: '=MEDIAN(A1:A10)' },
+      { name: 'STDEV', desc: '標準偏差', template: '=STDEV(A1:A10)' },
+      { name: 'VAR', desc: '分散', template: '=VAR(A1:A10)' },
+      { name: 'COUNTA', desc: '空白でない個数', template: '=COUNTA(A1:A10)' },
+    ],
+  },
 ]
 
 const BTN = 'w-7 h-7 flex items-center justify-center rounded text-xs transition-colors'
@@ -116,12 +211,18 @@ export default function SpreadsheetToolbar({
   dispatch,
   onOpenChartPanel,
   onOpenPivot,
+  onInsertFunction,
+  formatPainterActive,
+  onFormatPainterStart,
 }: Props) {
+  const [showFontFamily, setShowFontFamily] = useState(false)
   const [showTextColors, setShowTextColors] = useState(false)
   const [showBgColors, setShowBgColors] = useState(false)
   const [showNumberFormat, setShowNumberFormat] = useState(false)
   const [showBorders, setShowBorders] = useState(false)
   const [showCondFormat, setShowCondFormat] = useState(false)
+  const [showFunctionPicker, setShowFunctionPicker] = useState(false)
+  const [functionCategory, setFunctionCategory] = useState('数学')
   const [condRule, setCondRule] = useState<ConditionalFormat['rule']>('greaterThan')
   const [condValue, setCondValue] = useState('')
   const [condColor, setCondColor] = useState('#22c55e')
@@ -129,11 +230,13 @@ export default function SpreadsheetToolbar({
   const fmt = currentCellFormat || {}
 
   const closeAllDropdowns = () => {
+    setShowFontFamily(false)
     setShowTextColors(false)
     setShowBgColors(false)
     setShowNumberFormat(false)
     setShowBorders(false)
     setShowCondFormat(false)
+    setShowFunctionPicker(false)
   }
 
   const toggleDropdown = (setter: (v: boolean) => void, current: boolean) => {
@@ -154,16 +257,35 @@ export default function SpreadsheetToolbar({
 
   const applyBorder = (type: string) => {
     const border = '1px solid #64748b'
+    if (type === 'outline' && range && activeSheet) {
+      // Outline: only apply borders on the outer edges of the selection
+      for (let r = range.startRow; r <= range.endRow; r++) {
+        for (let c = range.startCol; c <= range.endCol; c++) {
+          const cellBorder: Partial<CellFormat> = {}
+          if (r === range.startRow) cellBorder.borderTop = border
+          if (r === range.endRow) cellBorder.borderBottom = border
+          if (c === range.startCol) cellBorder.borderLeft = border
+          if (c === range.endCol) cellBorder.borderRight = border
+          if (Object.keys(cellBorder).length > 0) {
+            dispatch({
+              type: 'SET_CELL_FORMAT',
+              sheetId: activeSheet.id,
+              row: r,
+              col: c,
+              format: cellBorder,
+            })
+          }
+        }
+      }
+      setShowBorders(false)
+      return
+    }
     let format: Partial<CellFormat> = {}
     switch (type) {
       case 'none':
         format = { borderTop: undefined, borderRight: undefined, borderBottom: undefined, borderLeft: undefined }
         break
       case 'all':
-        format = { borderTop: border, borderRight: border, borderBottom: border, borderLeft: border }
-        break
-      case 'outline':
-        // For outline, we need per-cell logic but simple approach: apply all borders
         format = { borderTop: border, borderRight: border, borderBottom: border, borderLeft: border }
         break
       case 'top':
@@ -191,6 +313,47 @@ export default function SpreadsheetToolbar({
       aria-label="書式設定ツールバー"
       className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-800 bg-slate-900 shrink-0 flex-wrap"
     >
+      {/* ── Font family ── */}
+      <div className="relative">
+        <button
+          onClick={() => toggleDropdown(setShowFontFamily, showFontFamily)}
+          className={`h-7 px-2 flex items-center gap-1 rounded text-xs ${BTN_DEFAULT}`}
+          title="フォント"
+          aria-label="フォント"
+        >
+          <span className="max-w-[80px] truncate">
+            {FONT_FAMILIES.find((f) => f.value === fmt.fontFamily)?.label || 'ゴシック'}
+          </span>
+          <ChevronDown size={10} />
+        </button>
+        {showFontFamily && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={closeAllDropdowns} />
+            <div className="absolute top-full left-0 mt-1 z-40 bg-slate-800 border border-slate-700 rounded-lg py-1 shadow-xl w-44">
+              {FONT_FAMILIES.map((f) => (
+                <button
+                  key={f.value}
+                  onClick={() => {
+                    onFormatChange({ fontFamily: f.value })
+                    closeAllDropdowns()
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                    fmt.fontFamily === f.value
+                      ? 'text-indigo-400 bg-slate-700'
+                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                  }`}
+                  style={{ fontFamily: f.value }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className={DIVIDER} />
+
       {/* ── Bold / Italic / Underline / Strikethrough ── */}
       <button
         onClick={() => onFormatChange({ bold: !fmt.bold })}
@@ -279,19 +442,38 @@ export default function SpreadsheetToolbar({
         {showTextColors && (
           <>
             <div className="fixed inset-0 z-30" onClick={closeAllDropdowns} />
-            <div className="absolute top-full left-0 mt-1 z-40 bg-slate-800 border border-slate-700 rounded-lg p-2 shadow-xl">
-              <div className="grid grid-cols-5 gap-1">
-                {TEXT_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => {
-                      onFormatChange({ textColor: color })
-                      closeAllDropdowns()
-                    }}
-                    className="w-6 h-6 rounded border border-slate-600 hover:border-white transition-colors"
-                    style={{ backgroundColor: color }}
-                  />
+            <div className="absolute top-full left-0 mt-1 z-40 bg-slate-800 border border-slate-700 rounded-lg p-2 shadow-xl w-[220px]">
+              <div className="text-[10px] text-slate-400 mb-1.5 font-medium">文字色</div>
+              <div className="flex flex-col gap-0.5">
+                {COLOR_ROWS.map((row) => (
+                  <div key={row.label} className="grid grid-cols-8 gap-0.5">
+                    {row.colors.map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => {
+                          onFormatChange({ textColor: color })
+                          closeAllDropdowns()
+                        }}
+                        className={`w-6 h-6 rounded transition-transform hover:scale-125 ${
+                          fmt.textColor === color ? 'ring-2 ring-indigo-400 ring-offset-1 ring-offset-slate-800' : 'border border-slate-600'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        title={`${row.label} ${color}`}
+                      />
+                    ))}
+                  </div>
                 ))}
+              </div>
+              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700">
+                <span className="text-[10px] text-slate-400">カスタム:</span>
+                <input
+                  type="color"
+                  value={fmt.textColor || '#ffffff'}
+                  onChange={(e) => {
+                    onFormatChange({ textColor: e.target.value })
+                  }}
+                  className="w-6 h-6 bg-transparent border-none cursor-pointer"
+                />
               </div>
             </div>
           </>
@@ -315,21 +497,49 @@ export default function SpreadsheetToolbar({
         {showBgColors && (
           <>
             <div className="fixed inset-0 z-30" onClick={closeAllDropdowns} />
-            <div className="absolute top-full left-0 mt-1 z-40 bg-slate-800 border border-slate-700 rounded-lg p-2 shadow-xl">
-              <div className="grid grid-cols-5 gap-1">
-                {BG_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => {
-                      onFormatChange({ bgColor: color === 'transparent' ? undefined : color })
-                      closeAllDropdowns()
-                    }}
-                    className="w-6 h-6 rounded border border-slate-600 hover:border-white transition-colors"
-                    style={{ backgroundColor: color === 'transparent' ? 'transparent' : color }}
-                  >
-                    {color === 'transparent' && <span className="text-[10px] text-slate-400">-</span>}
-                  </button>
+            <div className="absolute top-full left-0 mt-1 z-40 bg-slate-800 border border-slate-700 rounded-lg p-2 shadow-xl w-[220px]">
+              <div className="text-[10px] text-slate-400 mb-1.5 font-medium">背景色</div>
+              <button
+                onClick={() => {
+                  onFormatChange({ bgColor: undefined })
+                  closeAllDropdowns()
+                }}
+                className={`w-full text-left px-2 py-1 mb-1 rounded text-[10px] transition-colors ${
+                  !fmt.bgColor ? 'text-indigo-400 bg-slate-700' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                なし（透明）
+              </button>
+              <div className="flex flex-col gap-0.5">
+                {COLOR_ROWS.map((row) => (
+                  <div key={row.label} className="grid grid-cols-8 gap-0.5">
+                    {row.colors.map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => {
+                          onFormatChange({ bgColor: color })
+                          closeAllDropdowns()
+                        }}
+                        className={`w-6 h-6 rounded transition-transform hover:scale-125 ${
+                          fmt.bgColor === color ? 'ring-2 ring-indigo-400 ring-offset-1 ring-offset-slate-800' : 'border border-slate-600'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        title={`${row.label} ${color}`}
+                      />
+                    ))}
+                  </div>
                 ))}
+              </div>
+              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700">
+                <span className="text-[10px] text-slate-400">カスタム:</span>
+                <input
+                  type="color"
+                  value={fmt.bgColor || '#000000'}
+                  onChange={(e) => {
+                    onFormatChange({ bgColor: e.target.value })
+                  }}
+                  className="w-6 h-6 bg-transparent border-none cursor-pointer"
+                />
               </div>
             </div>
           </>
@@ -562,6 +772,61 @@ export default function SpreadsheetToolbar({
                   {label}
                 </button>
               ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Function picker ── */}
+      <div className="relative">
+        <button
+          onClick={() => toggleDropdown(setShowFunctionPicker, showFunctionPicker)}
+          className={`h-7 px-2 flex items-center gap-1 rounded text-xs ${BTN_DEFAULT}`}
+          title="関数を挿入"
+          aria-label="関数を挿入"
+        >
+          <FunctionSquare size={14} />
+          <span className="hidden sm:inline">関数</span>
+        </button>
+        {showFunctionPicker && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={closeAllDropdowns} />
+            <div className="absolute top-full left-0 mt-1 z-40 bg-slate-800 border border-slate-700 rounded-lg shadow-xl w-72 max-h-80 flex flex-col">
+              {/* Category tabs */}
+              <div className="flex flex-wrap gap-0.5 p-1.5 border-b border-slate-700">
+                {FUNCTION_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.name}
+                    onClick={() => setFunctionCategory(cat.name)}
+                    className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
+                      functionCategory === cat.name
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                    }`}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+              {/* Function list */}
+              <div className="overflow-y-auto flex-1 py-1">
+                {FUNCTION_CATEGORIES.find((c) => c.name === functionCategory)?.functions.map((fn) => (
+                  <button
+                    key={fn.name}
+                    onClick={() => {
+                      onInsertFunction?.(fn.name, fn.template)
+                      closeAllDropdowns()
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-700 transition-colors group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-indigo-400 font-mono font-semibold group-hover:text-indigo-300">{fn.name}</span>
+                      <span className="text-[10px] text-slate-500 group-hover:text-slate-400">{fn.desc}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-600 font-mono mt-0.5 group-hover:text-slate-500">{fn.template}</div>
+                  </button>
+                ))}
+              </div>
             </div>
           </>
         )}
@@ -829,6 +1094,18 @@ export default function SpreadsheetToolbar({
           <Eraser size={14} />
         </button>
       )}
+
+      {/* ── Format Painter ── */}
+      <button
+        onClick={onFormatPainterStart}
+        className={`${BTN} ${formatPainterActive ? BTN_ACTIVE : BTN_DEFAULT}`}
+        title="書式のコピー"
+        aria-label="書式のコピー"
+      >
+        <PaintBucket size={14} />
+      </button>
+
+      <div className={DIVIDER} />
     </div>
   )
 }

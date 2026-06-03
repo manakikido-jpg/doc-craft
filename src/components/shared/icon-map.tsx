@@ -16,6 +16,11 @@ import {
   Shield,
   Megaphone,
   HelpCircle,
+  DollarSign,
+  CheckSquare,
+  Table2,
+  Users,
+  Receipt,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -36,6 +41,11 @@ const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: 
   shield: Shield,
   megaphone: Megaphone,
   helpCircle: HelpCircle,
+  dollarSign: DollarSign,
+  checkSquare: CheckSquare,
+  table: Table2,
+  users: Users,
+  receipt: Receipt,
 }
 
 export default function IconFromKey({

@@ -1,10 +1,14 @@
 'use client'
 
 import { useReducer, useEffect, useRef, useCallback } from 'react'
-import type { SpreadsheetDocument, Sheet, Cell, CellFormat, MergedCellRange, ConditionalFormat, DataValidation } from '@/types'
+import type { SpreadsheetDocument, Sheet, Cell, CellFormat, CellComment, MergedCellRange, ConditionalFormat, DataValidation, SpreadsheetChart } from '@/types'
 import { generateId } from '@/lib/utils'
-import { saveSpreadsheetDoc } from '@/lib/cloud-store'
+import { saveSpreadsheetDoc } from '@/lib/storage/cloud-store'
 import { createUndoableReducer, initUndoable, type UndoableAction } from '@/lib/undoable'
+import { cellReducer } from './reducers/cell-reducer'
+import { sheetReducer } from './reducers/sheet-reducer'
+import { formatReducer } from './reducers/format-reducer'
+import { filterSortReducer } from './reducers/filter-sort-reducer'
 
 type SpreadsheetAction =
   | { type: 'LOAD'; doc: SpreadsheetDocument }
@@ -15,6 +19,8 @@ type SpreadsheetAction =
   | { type: 'DELETE_SHEET'; id: string }
   | { type: 'RENAME_SHEET'; id: string; name: string }
   | { type: 'DUPLICATE_SHEET'; id: string }
+  | { type: 'REORDER_SHEETS'; fromIndex: number; toIndex: number }
+  | { type: 'INSERT_SHEET_AT'; sheet: Sheet; atIndex: number }
   // Cell editing
   | { type: 'SET_CELL_VALUE'; sheetId: string; row: number; col: number; value: string }
   | { type: 'SET_CELL_FORMAT'; sheetId: string; row: number; col: number; format: Partial<CellFormat> }
@@ -42,8 +48,11 @@ type SpreadsheetAction =
   | { type: 'PASTE_CELLS'; sheetId: string; startRow: number; startCol: number; data: Record<string, Cell> }
   // Sorting & Filtering
   | { type: 'SORT_SHEET'; sheetId: string; col: number; direction: 'asc' | 'desc' }
+  | { type: 'MULTI_SORT_SHEET'; sheetId: string; keys: { col: number; direction: 'asc' | 'desc' }[] }
   | { type: 'SET_FILTER'; sheetId: string; col: number; values: string[] }
   | { type: 'CLEAR_FILTERS'; sheetId: string }
+  // Remove Duplicates
+  | { type: 'REMOVE_DUPLICATES'; sheetId: string; cols: number[]; startRow: number; endRow: number }
   // Freeze Panes
   | { type: 'SET_FREEZE'; sheetId: string; frozenRows: number; frozenCols: number }
   // Conditional Formatting
@@ -57,449 +66,64 @@ type SpreadsheetAction =
   // Data Validation
   | { type: 'SET_DATA_VALIDATION'; sheetId: string; startRow: number; startCol: number; endRow: number; endCol: number; validation: DataValidation }
   | { type: 'REMOVE_DATA_VALIDATION'; sheetId: string; startRow: number; startCol: number; endRow: number; endCol: number }
+  // Hide/Show rows/cols
+  | { type: 'HIDE_ROWS'; sheetId: string; rows: number[] }
+  | { type: 'SHOW_ROWS'; sheetId: string; rows: number[] }
+  | { type: 'HIDE_COLS'; sheetId: string; cols: number[] }
+  | { type: 'SHOW_COLS'; sheetId: string; cols: number[] }
+  // Cell comments
+  | { type: 'SET_CELL_COMMENT'; sheetId: string; row: number; col: number; comment: string }
+  | { type: 'DELETE_CELL_COMMENT'; sheetId: string; row: number; col: number }
+  | { type: 'ADD_CELL_COMMENT'; sheetId: string; row: number; col: number; author: string; text: string }
+  | { type: 'RESOLVE_CELL_COMMENT'; sheetId: string; row: number; col: number; commentIndex: number }
+  // Checkbox
+  | { type: 'TOGGLE_CHECKBOX'; sheetId: string; row: number; col: number }
+  | { type: 'SET_SHEET_COLOR'; id: string; color: string }
+  // Hyperlink
+  | { type: 'SET_CELL_HYPERLINK'; sheetId: string; row: number; col: number; url: string; label?: string }
+  | { type: 'REMOVE_CELL_HYPERLINK'; sheetId: string; row: number; col: number }
+  // Row/Col grouping
+  | { type: 'GROUP_ROWS'; sheetId: string; startRow: number; endRow: number }
+  | { type: 'GROUP_COLS'; sheetId: string; startCol: number; endCol: number }
+  | { type: 'UNGROUP_ROWS'; sheetId: string; startRow: number; endRow: number }
+  | { type: 'UNGROUP_COLS'; sheetId: string; startCol: number; endCol: number }
+  | { type: 'TOGGLE_GROUP_COLLAPSE'; sheetId: string; groupType: 'row' | 'col'; index: number }
+  // Cell protection
+  | { type: 'SET_CELL_LOCKED'; sheetId: string; startRow: number; startCol: number; endRow: number; endCol: number; locked: boolean }
+  | { type: 'TOGGLE_SHEET_PROTECTION'; sheetId: string }
+  // Charts (persisted on the document)
+  | { type: 'ADD_CHART'; chart: SpreadsheetChart }
+  | { type: 'UPDATE_CHART'; id: string; props: Partial<SpreadsheetChart> }
+  | { type: 'DELETE_CHART'; id: string }
 
 export type { SpreadsheetAction }
 
-function updateSheet(state: SpreadsheetDocument, sheetId: string, fn: (s: Sheet) => Sheet): SpreadsheetDocument {
-  return { ...state, sheets: state.sheets.map((s) => (s.id === sheetId ? fn(s) : s)) }
-}
-
-function rekeyRowInsert(cells: Record<string, Cell>, atRow: number): Record<string, Cell> {
-  const newCells: Record<string, Cell> = {}
-  for (const [key, cell] of Object.entries(cells)) {
-    const [r, c] = key.split('-').map(Number)
-    if (r >= atRow) {
-      newCells[`${r + 1}-${c}`] = cell
-    } else {
-      newCells[key] = cell
-    }
-  }
-  return newCells
-}
-
-function rekeyRowDelete(cells: Record<string, Cell>, row: number): Record<string, Cell> {
-  const newCells: Record<string, Cell> = {}
-  for (const [key, cell] of Object.entries(cells)) {
-    const [r, c] = key.split('-').map(Number)
-    if (r === row) continue
-    if (r > row) {
-      newCells[`${r - 1}-${c}`] = cell
-    } else {
-      newCells[key] = cell
-    }
-  }
-  return newCells
-}
-
-function rekeyColInsert(cells: Record<string, Cell>, atCol: number): Record<string, Cell> {
-  const newCells: Record<string, Cell> = {}
-  for (const [key, cell] of Object.entries(cells)) {
-    const [r, c] = key.split('-').map(Number)
-    if (c >= atCol) {
-      newCells[`${r}-${c + 1}`] = cell
-    } else {
-      newCells[key] = cell
-    }
-  }
-  return newCells
-}
-
-function rekeyColDelete(cells: Record<string, Cell>, col: number): Record<string, Cell> {
-  const newCells: Record<string, Cell> = {}
-  for (const [key, cell] of Object.entries(cells)) {
-    const [r, c] = key.split('-').map(Number)
-    if (c === col) continue
-    if (c > col) {
-      newCells[`${r}-${c - 1}`] = cell
-    } else {
-      newCells[key] = cell
-    }
-  }
-  return newCells
-}
-
+/** Combined reducer: delegates to sub-reducers, falls back to global actions */
 function spreadsheetReducer(state: SpreadsheetDocument, action: SpreadsheetAction): SpreadsheetDocument {
+  // Global actions handled directly
   switch (action.type) {
     case 'LOAD':
       return action.doc
-
     case 'SET_TITLE':
       return { ...state, meta: { ...state.meta, title: action.title } }
-
     case 'SET_ACTIVE':
       return { ...state, activeSheetId: action.id }
-
-    // ── Sheet management ──
-
-    case 'ADD_SHEET': {
-      const num = state.sheets.length + 1
-      const newSheet: Sheet = {
-        id: generateId(),
-        name: `Sheet${num}`,
-        cells: {},
-        colWidths: {},
-        rowHeights: {},
-        mergedCells: [],
-        rowCount: 50,
-        colCount: 26,
-      }
-      return { ...state, sheets: [...state.sheets, newSheet], activeSheetId: newSheet.id }
-    }
-
-    case 'DELETE_SHEET': {
-      if (state.sheets.length <= 1) return state
-      const filtered = state.sheets.filter((s) => s.id !== action.id)
-      const newActive = state.activeSheetId === action.id ? filtered[0].id : state.activeSheetId
-      return { ...state, sheets: filtered, activeSheetId: newActive }
-    }
-
-    case 'RENAME_SHEET':
-      return updateSheet(state, action.id, (s) => ({ ...s, name: action.name }))
-
-    case 'DUPLICATE_SHEET': {
-      const source = state.sheets.find((s) => s.id === action.id)
-      if (!source) return state
-      const newId = generateId()
-      // Deep clone cells to avoid shared references between source and copy
-      const deepCells: Record<string, Cell> = {}
-      for (const [key, cell] of Object.entries(source.cells)) {
-        deepCells[key] = { value: cell.value, ...(cell.format ? { format: { ...cell.format } } : {}) }
-      }
-      const copy: Sheet = {
-        ...source,
-        id: newId,
-        name: source.name + ' (コピー)',
-        cells: deepCells,
-        mergedCells: source.mergedCells.map((m) => ({ ...m })),
-        colWidths: { ...source.colWidths },
-        rowHeights: { ...source.rowHeights },
-        conditionalFormats: source.conditionalFormats?.map((cf) => ({ ...cf })),
-      }
-      const idx = state.sheets.findIndex((s) => s.id === action.id)
-      const sheets = [...state.sheets]
-      sheets.splice(idx + 1, 0, copy)
-      return { ...state, sheets, activeSheetId: newId }
-    }
-
-    // ── Cell editing ──
-
-    case 'SET_CELL_VALUE': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const key = `${action.row}-${action.col}`
-        const existing = s.cells[key]
-        if (!action.value && !existing?.format) {
-          // Remove empty cell
-          const newCells = { ...s.cells }
-          delete newCells[key]
-          return { ...s, cells: newCells }
-        }
-        return {
-          ...s,
-          cells: {
-            ...s.cells,
-            [key]: { ...existing, value: action.value },
-          },
-        }
-      })
-    }
-
-    case 'SET_CELL_FORMAT': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const key = `${action.row}-${action.col}`
-        const existing = s.cells[key] || { value: '' }
-        return {
-          ...s,
-          cells: {
-            ...s.cells,
-            [key]: { ...existing, format: { ...existing.format, ...action.format } },
-          },
-        }
-      })
-    }
-
-    case 'SET_RANGE_FORMAT': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const newCells = { ...s.cells }
-        for (let r = action.startRow; r <= action.endRow; r++) {
-          for (let c = action.startCol; c <= action.endCol; c++) {
-            const key = `${r}-${c}`
-            const existing = newCells[key] || { value: '' }
-            newCells[key] = { ...existing, format: { ...existing.format, ...action.format } }
-          }
-        }
-        return { ...s, cells: newCells }
-      })
-    }
-
-    case 'CLEAR_CELLS': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const newCells = { ...s.cells }
-        for (let r = action.startRow; r <= action.endRow; r++) {
-          for (let c = action.startCol; c <= action.endCol; c++) {
-            delete newCells[`${r}-${c}`]
-          }
-        }
-        return { ...s, cells: newCells }
-      })
-    }
-
-    // ── Row/Col operations ──
-
-    case 'INSERT_ROW':
-      return updateSheet(state, action.sheetId, (s) => ({
-        ...s,
-        cells: rekeyRowInsert(s.cells, action.atRow),
-        rowCount: s.rowCount + 1,
-      }))
-
-    case 'DELETE_ROW':
-      return updateSheet(state, action.sheetId, (s) => ({
-        ...s,
-        cells: rekeyRowDelete(s.cells, action.row),
-        rowCount: Math.max(1, s.rowCount - 1),
-      }))
-
-    case 'INSERT_COL':
-      return updateSheet(state, action.sheetId, (s) => ({
-        ...s,
-        cells: rekeyColInsert(s.cells, action.atCol),
-        colCount: Math.min(s.colCount + 1, 26),
-      }))
-
-    case 'DELETE_COL':
-      return updateSheet(state, action.sheetId, (s) => ({
-        ...s,
-        cells: rekeyColDelete(s.cells, action.col),
-        colCount: Math.max(1, s.colCount - 1),
-      }))
-
-    case 'SET_COL_WIDTH':
-      return updateSheet(state, action.sheetId, (s) => ({
-        ...s,
-        colWidths: { ...s.colWidths, [action.col]: action.width },
-      }))
-
-    case 'SET_ROW_HEIGHT':
-      return updateSheet(state, action.sheetId, (s) => ({
-        ...s,
-        rowHeights: { ...s.rowHeights, [action.row]: action.height },
-      }))
-
-    // ── Merge ──
-
-    case 'MERGE_CELLS': {
-      const rowSpan = action.endRow - action.startRow + 1
-      const colSpan = action.endCol - action.startCol + 1
-      if (rowSpan <= 1 && colSpan <= 1) return state
-      const merge: MergedCellRange = {
-        startRow: action.startRow,
-        startCol: action.startCol,
-        rowSpan,
-        colSpan,
-      }
-      return updateSheet(state, action.sheetId, (s) => ({
-        ...s,
-        mergedCells: [...s.mergedCells, merge],
-      }))
-    }
-
-    case 'UNMERGE_CELLS': {
-      return updateSheet(state, action.sheetId, (s) => ({
-        ...s,
-        mergedCells: s.mergedCells.filter((m) => !(m.startRow === action.startRow && m.startCol === action.startCol)),
-      }))
-    }
-
-    // ── Clipboard ──
-
-    case 'PASTE_CELLS': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const newCells = { ...s.cells }
-        for (const [relKey, cell] of Object.entries(action.data)) {
-          const [dr, dc] = relKey.split('-').map(Number)
-          const key = `${action.startRow + dr}-${action.startCol + dc}`
-          newCells[key] = { ...cell }
-        }
-        return { ...s, cells: newCells }
-      })
-    }
-
-    // ── Sorting & Filtering ──
-
-    case 'SORT_SHEET': {
-      return updateSheet(state, action.sheetId, (s) => {
-        // Collect unique row indices that have data
-        const rowSet = new Set<number>()
-        for (const key of Object.keys(s.cells)) {
-          const r = Number(key.split('-')[0])
-          rowSet.add(r)
-        }
-        const rows = Array.from(rowSet).sort((a, b) => a - b)
-
-        // Sort rows by value in the specified column
-        const sorted = [...rows].sort((a, b) => {
-          const aVal = s.cells[`${a}-${action.col}`]?.value ?? ''
-          const bVal = s.cells[`${b}-${action.col}`]?.value ?? ''
-          const aNum = Number(aVal)
-          const bNum = Number(bVal)
-          let cmp: number
-          if (!isNaN(aNum) && !isNaN(bNum) && aVal !== '' && bVal !== '') {
-            cmp = aNum - bNum
-          } else {
-            cmp = aVal.localeCompare(bVal)
-          }
-          return action.direction === 'asc' ? cmp : -cmp
-        })
-
-        // Build mapping from old row index to new row index
-        const rowMapping = new Map<number, number>()
-        for (let i = 0; i < rows.length; i++) {
-          rowMapping.set(sorted[i], rows[i])
-        }
-
-        // Rekey all cells to new row positions
-        const newCells: Record<string, Cell> = {}
-        for (const [key, cell] of Object.entries(s.cells)) {
-          const [r, c] = key.split('-').map(Number)
-          const newRow = rowMapping.get(r)
-          if (newRow !== undefined) {
-            newCells[`${newRow}-${c}`] = cell
-          } else {
-            newCells[key] = cell
-          }
-        }
-
-        return { ...s, cells: newCells, sortState: { col: action.col, direction: action.direction } }
-      })
-    }
-
-    case 'SET_FILTER': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const existing = s.filterState ?? []
-        const idx = existing.findIndex((f) => f.col === action.col)
-        let filterState: { col: number; values: string[] }[]
-        if (idx >= 0) {
-          filterState = existing.map((f, i) => (i === idx ? { col: action.col, values: action.values } : f))
-        } else {
-          filterState = [...existing, { col: action.col, values: action.values }]
-        }
-        return { ...s, filterState }
-      })
-    }
-
-    case 'CLEAR_FILTERS': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const { filterState: _, ...rest } = s
-        return { ...rest } as Sheet
-      })
-    }
-
-    // ── Freeze Panes ──
-
-    case 'SET_FREEZE': {
-      return updateSheet(state, action.sheetId, (s) => ({
-        ...s,
-        frozenRows: action.frozenRows,
-        frozenCols: action.frozenCols,
-      }))
-    }
-
-    // ── Conditional Formatting ──
-
-    case 'ADD_CONDITIONAL_FORMAT': {
-      return updateSheet(state, action.sheetId, (s) => ({
-        ...s,
-        conditionalFormats: [...(s.conditionalFormats ?? []), action.format],
-      }))
-    }
-
-    case 'DELETE_CONDITIONAL_FORMAT': {
-      return updateSheet(state, action.sheetId, (s) => ({
-        ...s,
-        conditionalFormats: (s.conditionalFormats ?? []).filter((cf) => cf.id !== action.formatId),
-      }))
-    }
-
-    // ── Fill Operations ──
-
-    case 'FILL_DOWN': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const newCells = { ...s.cells }
-        for (let c = action.startCol; c <= action.endCol; c++) {
-          const sourceKey = `${action.startRow}-${c}`
-          const source = s.cells[sourceKey]
-          if (!source) continue
-          for (let r = action.startRow + 1; r <= action.endRow; r++) {
-            newCells[`${r}-${c}`] = { ...source }
-          }
-        }
-        return { ...s, cells: newCells }
-      })
-    }
-
-    case 'FILL_RIGHT': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const newCells = { ...s.cells }
-        for (let r = action.startRow; r <= action.endRow; r++) {
-          const sourceKey = `${r}-${action.startCol}`
-          const source = s.cells[sourceKey]
-          if (!source) continue
-          for (let c = action.startCol + 1; c <= action.endCol; c++) {
-            newCells[`${r}-${c}`] = { ...source }
-          }
-        }
-        return { ...s, cells: newCells }
-      })
-    }
-
-    // ── Clear Formatting ──
-
-    case 'CLEAR_FORMAT': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const newCells = { ...s.cells }
-        for (let r = action.startRow; r <= action.endRow; r++) {
-          for (let c = action.startCol; c <= action.endCol; c++) {
-            const key = `${r}-${c}`
-            const existing = newCells[key]
-            if (existing) {
-              const { format: _, ...rest } = existing
-              newCells[key] = rest
-            }
-          }
-        }
-        return { ...s, cells: newCells }
-      })
-    }
-
-    // ── Data Validation ──
-
-    case 'SET_DATA_VALIDATION': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const dv = { ...(s.dataValidation ?? {}) }
-        for (let r = action.startRow; r <= action.endRow; r++) {
-          for (let c = action.startCol; c <= action.endCol; c++) {
-            dv[`${r}-${c}`] = { ...action.validation }
-          }
-        }
-        return { ...s, dataValidation: dv }
-      })
-    }
-
-    case 'REMOVE_DATA_VALIDATION': {
-      return updateSheet(state, action.sheetId, (s) => {
-        const dv = { ...(s.dataValidation ?? {}) }
-        for (let r = action.startRow; r <= action.endRow; r++) {
-          for (let c = action.startCol; c <= action.endCol; c++) {
-            delete dv[`${r}-${c}`]
-          }
-        }
-        return { ...s, dataValidation: dv }
-      })
-    }
-
-    default:
-      return state
+    case 'ADD_CHART':
+      return { ...state, charts: [...(state.charts ?? []), action.chart] }
+    case 'UPDATE_CHART':
+      return { ...state, charts: (state.charts ?? []).map((c) => (c.id === action.id ? { ...c, ...action.props } : c)) }
+    case 'DELETE_CHART':
+      return { ...state, charts: (state.charts ?? []).filter((c) => c.id !== action.id) }
   }
+
+  // Try each sub-reducer; first non-null result wins
+  const subReducers = [cellReducer, sheetReducer, formatReducer, filterSortReducer]
+  for (const reducer of subReducers) {
+    const result = reducer(state, action)
+    if (result !== null) return result
+  }
+
+  return state
 }
 
 const INITIAL: SpreadsheetDocument = {
@@ -536,5 +160,8 @@ export function useSpreadsheet() {
     }
   }, [state])
 
-  return { state, dispatch, canUndo, canRedo }
+  const undoDepth = undoState.past.length
+  const redoDepth = undoState.future.length
+
+  return { state, dispatch, canUndo, canRedo, undoDepth, redoDepth }
 }

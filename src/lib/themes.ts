@@ -1,5 +1,76 @@
 import type { SlideTheme, SlideThemeKey } from '@/types'
 
+// ── Brand Settings Types & Helpers ──
+export interface BrandSettings {
+  companyName: string
+  logoUrl: string
+  primaryColor: string
+  secondaryColor: string
+}
+
+const BRAND_SETTINGS_KEY = 'doccraft:brand-settings'
+
+export function getBrandSettings(): BrandSettings | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(BRAND_SETTINGS_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as BrandSettings
+  } catch {
+    return null
+  }
+}
+
+export function saveBrandSettings(settings: BrandSettings) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(BRAND_SETTINGS_KEY, JSON.stringify(settings))
+}
+
+/**
+ * Derive a darker variant of a hex color for backgrounds.
+ */
+function darkenHex(hex: string, factor: number = 0.25): string {
+  const h = hex.replace('#', '')
+  const r = Math.round(parseInt(h.substring(0, 2), 16) * factor)
+  const g = Math.round(parseInt(h.substring(2, 4), 16) * factor)
+  const b = Math.round(parseInt(h.substring(4, 6), 16) * factor)
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+}
+
+/**
+ * Generate a SlideTheme from brand colors.
+ */
+export function generateBrandTheme(
+  primaryColor: string,
+  secondaryColor: string,
+  companyName: string,
+): SlideTheme {
+  const darkPrimary = darkenHex(primaryColor, 0.25)
+  const midPrimary = darkenHex(primaryColor, 0.5)
+  return {
+    key: 'brand',
+    label: `${companyName || 'ブランド'}テーマ`,
+    background: `linear-gradient(135deg, ${darkPrimary} 0%, ${midPrimary} 100%)`,
+    titleColor: '#ffffff',
+    bodyColor: '#e2e8f0',
+    accentColor: secondaryColor || primaryColor,
+  }
+}
+
+/**
+ * Build the full themes record, including brand theme if brand settings exist.
+ */
+export function getThemesWithBrand(): Record<SlideThemeKey, SlideTheme> {
+  const brand = getBrandSettings()
+  if (brand && brand.primaryColor) {
+    return {
+      ...SLIDE_THEMES,
+      brand: generateBrandTheme(brand.primaryColor, brand.secondaryColor, brand.companyName),
+    }
+  }
+  return SLIDE_THEMES
+}
+
 export const SLIDE_THEMES: Record<SlideThemeKey, SlideTheme> = {
   'dark-blue': {
     key: 'dark-blue',
@@ -64,6 +135,14 @@ export const SLIDE_THEMES: Record<SlideThemeKey, SlideTheme> = {
     titleColor: '#f0f9ff',
     bodyColor: '#7dd3fc',
     accentColor: '#38bdf8',
+  },
+  brand: {
+    key: 'brand',
+    label: 'ブランドテーマ',
+    background: 'linear-gradient(135deg, #1e1b4b 0%, #4c1d95 100%)',
+    titleColor: '#ffffff',
+    bodyColor: '#e2e8f0',
+    accentColor: '#6366f1',
   },
 }
 

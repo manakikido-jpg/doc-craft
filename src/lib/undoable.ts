@@ -6,7 +6,7 @@
 const MAX_HISTORY = 50
 
 /** Actions that should NOT create history entries */
-const SKIP_HISTORY = new Set(['LOAD', 'SET_ACTIVE', 'SET_TITLE', 'UNDO', 'REDO'])
+const SKIP_HISTORY = new Set(['LOAD', 'SET_ACTIVE', 'SET_TITLE', 'UNDO', 'REDO', 'SET_SLIDE_SECTION'])
 
 export interface UndoableState<T> {
   past: T[]

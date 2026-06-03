@@ -19,8 +19,8 @@ import type {
   SlideMaster,
 } from '@/types'
 import { generateId } from '@/lib/utils'
-import { SLIDE_TEMPLATES } from '@/lib/templates'
-import { saveSlideDoc } from '@/lib/cloud-store'
+import { SLIDE_TEMPLATES } from '@/lib/templates/slide-templates'
+import { saveSlideDoc } from '@/lib/storage/cloud-store'
 import { createUndoableReducer, initUndoable, type UndoableAction } from '@/lib/undoable'
 
 type SlideAction =
@@ -43,7 +43,7 @@ type SlideAction =
   | { type: 'DELETE_ELEMENT'; slideId: string; elementId: string }
   | { type: 'SET_NOTES'; slideId: string; notes: string }
   | { type: 'SET_TRANSITION'; slideId: string; transition: Slide['transition'] }
-  | { type: 'ADD_COMMENT'; text: string; slideId?: string; parentId?: string }
+  | { type: 'ADD_COMMENT'; text: string; slideId?: string; parentId?: string; blockId?: string }
   | { type: 'RESOLVE_COMMENT'; id: string }
   | { type: 'DELETE_COMMENT'; id: string }
   | { type: 'SET_CUSTOM_THEME'; slideId: string; customTheme: Partial<import('@/types').SlideTheme> }
@@ -92,6 +92,7 @@ type SlideAction =
   | { type: 'ADD_AUDIO_ELEMENT'; slideId: string; src: string }
   | { type: 'ADD_CHART_ELEMENT'; slideId: string; chartType: SlideChartElement['chartType'] }
   | { type: 'UPDATE_CHART_DATA'; slideId: string; elementId: string; data: SlideChartElement['data'] }
+  | { type: 'UPDATE_CHART_PROPS'; slideId: string; elementId: string; props: Record<string, unknown> }
   | { type: 'REPLACE_IMAGE'; slideId: string; elementId: string; src: string }
   // Phase G: Footer
   | { type: 'SET_GLOBAL_FOOTER'; footer: SlidesDocument['globalFooter'] }
@@ -99,6 +100,37 @@ type SlideAction =
   | { type: 'ADD_MASTER'; master: SlideMaster }
   | { type: 'SET_SLIDE_MASTER'; slideId: string; masterId?: string }
   | { type: 'SET_SLIDE_ELEMENTS'; slideId: string; elements: SlideElement[] }
+  | { type: 'IMPORT_SLIDES'; slides: { elements: SlideElement[]; themeKey?: SlideThemeKey; transition?: Slide['transition']; transitionDuration?: number; notes?: string; customTheme?: Slide['customTheme'] }[]; afterId?: string }
+  // Table merge/resize
+  | { type: 'MERGE_TABLE_CELLS'; slideId: string; elementId: string; startRow: number; startCol: number; rowSpan: number; colSpan: number }
+  | { type: 'UNMERGE_TABLE_CELLS'; slideId: string; elementId: string; startRow: number; startCol: number }
+  | { type: 'SET_TABLE_COL_WIDTH'; slideId: string; elementId: string; col: number; width: number }
+  | { type: 'SET_TABLE_ROW_HEIGHT'; slideId: string; elementId: string; row: number; height: number }
+  | { type: 'UPDATE_CONNECTOR_ENDPOINTS'; slideId: string; elementId: string; fromPoint: { x: number; y: number }; toPoint: { x: number; y: number }; fromElementId?: string; toElementId?: string }
+  // PowerPoint improvements
+  | { type: 'SET_SLIDE_SIZE'; slideSize: SlidesDocument['slideSize'] }
+  | { type: 'SET_TRANSITION_DURATION'; slideId: string; duration: number }
+  | { type: 'ADD_SECTION'; name: string; startSlideIndex: number; color?: string }
+  | { type: 'RENAME_SECTION'; sectionId: string; name: string }
+  | { type: 'DELETE_SECTION'; sectionId: string }
+  | { type: 'UPDATE_MASTER'; masterId: string; master: Partial<SlideMaster> }
+  | { type: 'DELETE_MASTER'; masterId: string }
+  | { type: 'SET_AUTO_ADVANCE'; slideId: string; seconds: number }
+  | { type: 'SET_TRANSITION_ALL'; transition: Slide['transition']; duration?: number }
+  | { type: 'FIND_REPLACE_TEXT'; find: string; replace: string; slideIds?: string[] }
+  // New element/slide actions
+  | { type: 'SORT_ELEMENTS_BY_ZINDEX'; slideId: string }
+  | { type: 'SET_ELEMENT_LOCKED'; slideId: string; elementId: string; locked: boolean }
+  | { type: 'SET_ELEMENT_OPACITY'; slideId: string; elementId: string; opacity: number }
+  | { type: 'FLIP_ELEMENT'; slideId: string; elementId: string; direction: 'horizontal' | 'vertical' }
+  | { type: 'ALIGN_ELEMENTS'; slideId: string; elementIds: string[]; alignment: 'left' | 'right' | 'top' | 'bottom' | 'center-h' | 'center-v' }
+  | { type: 'DISTRIBUTE_ELEMENTS'; slideId: string; elementIds: string[]; direction: 'horizontal' | 'vertical' }
+  | { type: 'SET_SLIDE_SECTION'; slideId: string; sectionName?: string; sectionColor?: string }
+  | { type: 'DUPLICATE_ELEMENTS'; slideId: string; elementIds: string[] }
+  | { type: 'MOVE_SLIDE_TO_SECTION'; slideId: string; sectionIndex: number }
+  | { type: 'PASTE_ELEMENTS_TO_SLIDE'; slideId: string; elements: SlideElement[] }
+  | { type: 'TOGGLE_SLIDE_HIDDEN'; slideId: string }
+  | { type: 'SORT_TABLE'; slideId: string; elementId: string; col: number; direction: 'asc' | 'desc'; excludeHeader: boolean }
 
 export type { SlideAction }
 
@@ -110,7 +142,7 @@ function updateSlide(state: SlidesDocument, slideId: string, fn: (s: Slide) => S
   return { ...state, slides: state.slides.map((s) => (s.id === slideId ? fn(s) : s)) }
 }
 
-function slidesReducer(state: SlidesDocument, action: SlideAction): SlidesDocument {
+export function slidesReducer(state: SlidesDocument, action: SlideAction): SlidesDocument {
   switch (action.type) {
     case 'LOAD':
       return action.doc
@@ -154,8 +186,11 @@ function slidesReducer(state: SlidesDocument, action: SlideAction): SlidesDocume
     }
 
     case 'REORDER_SLIDES': {
+      if (action.fromIndex < 0 || action.fromIndex >= state.slides.length) return state
+      if (action.toIndex < 0 || action.toIndex >= state.slides.length) return state
       const slides = [...state.slides]
       const [moved] = slides.splice(action.fromIndex, 1)
+      if (!moved) return state
       slides.splice(action.toIndex, 0, moved)
       return { ...state, slides }
     }
@@ -250,11 +285,56 @@ function slidesReducer(state: SlidesDocument, action: SlideAction): SlidesDocume
       }))
     }
 
-    case 'UPDATE_ELEMENT_POSITION':
-      return updateSlide(state, action.slideId, (s) => ({
+    case 'UPDATE_ELEMENT_POSITION': {
+      let newState = updateSlide(state, action.slideId, (s) => ({
         ...s,
-        elements: s.elements.map((e) => (e.id === action.elementId ? { ...e, x: action.x, y: action.y } : e)),
+        elements: s.elements.map((e) => (e.id === action.elementId && e.type !== 'connector' ? { ...e, x: action.x, y: action.y } : e)),
       }))
+      // Update connected connectors
+      const slideAfterPos = newState.slides.find(s => s.id === action.slideId)
+      if (slideAfterPos) {
+        const movedEl = slideAfterPos.elements.find(e => e.id === action.elementId)
+        if (movedEl && movedEl.type !== 'connector') {
+          newState = updateSlide(newState, action.slideId, (s) => ({
+            ...s,
+            elements: s.elements.map((el) => {
+              if (el.type !== 'connector') return el
+              const conn = el as SlideConnectorElement
+              let updated = false
+              let newFrom = conn.fromPoint
+              let newTo = conn.toPoint
+              if (conn.fromElementId === action.elementId) {
+                const anchorRatioX = (conn.fromPoint.x - (movedEl.x - (action.x - movedEl.x))) // not needed, use direct calc
+                // Recompute: find old element position from the diff
+                // The element was already moved, so we compute anchor offset from new position
+                // We stored the anchor as absolute %, so recompute relative to old pos then apply to new
+                // Actually, we need to know which anchor was used. Since we store absolute coords,
+                // we shift by the delta of the element move.
+                const prevEl = state.slides.find(sl => sl.id === action.slideId)?.elements.find(e => e.id === action.elementId)
+                if (prevEl && prevEl.type !== 'connector') {
+                  const dx = action.x - prevEl.x
+                  const dy = action.y - prevEl.y
+                  newFrom = { x: conn.fromPoint.x + dx, y: conn.fromPoint.y + dy }
+                  updated = true
+                }
+              }
+              if (conn.toElementId === action.elementId) {
+                const prevEl = state.slides.find(sl => sl.id === action.slideId)?.elements.find(e => e.id === action.elementId)
+                if (prevEl && prevEl.type !== 'connector') {
+                  const dx = action.x - prevEl.x
+                  const dy = action.y - prevEl.y
+                  newTo = { x: conn.toPoint.x + dx, y: conn.toPoint.y + dy }
+                  updated = true
+                }
+              }
+              if (updated) return { ...conn, fromPoint: newFrom, toPoint: newTo }
+              return el
+            }),
+          }))
+        }
+      }
+      return newState
+    }
 
     case 'UPDATE_ELEMENT_SIZE':
       return updateSlide(state, action.slideId, (s) => ({
@@ -289,6 +369,7 @@ function slidesReducer(state: SlidesDocument, action: SlideAction): SlidesDocume
         text: action.text,
         slideId: action.slideId,
         parentId: action.parentId,
+        blockId: action.blockId,
         author: 'ユーザー',
         createdAt: new Date().toISOString(),
       }
@@ -346,14 +427,57 @@ function slidesReducer(state: SlidesDocument, action: SlideAction): SlidesDocume
       })
 
     // Phase 1: Multi-select batch
-    case 'UPDATE_ELEMENTS_POSITION':
-      return updateSlide(state, action.slideId, (s) => ({
+    case 'UPDATE_ELEMENTS_POSITION': {
+      let newState = updateSlide(state, action.slideId, (s) => ({
         ...s,
         elements: s.elements.map((e) => {
           const move = action.moves.find((m) => m.elementId === e.id)
           return move ? { ...e, x: move.x, y: move.y } : e
         }),
       }))
+      // Update connected connectors for each moved element
+      const slideAfterMoves = newState.slides.find(s => s.id === action.slideId)
+      const prevSlide = state.slides.find(s => s.id === action.slideId)
+      if (slideAfterMoves && prevSlide) {
+        newState = updateSlide(newState, action.slideId, (s) => ({
+          ...s,
+          elements: s.elements.map((el) => {
+            if (el.type !== 'connector') return el
+            const conn = el as SlideConnectorElement
+            let newFrom = conn.fromPoint
+            let newTo = conn.toPoint
+            let updated = false
+            if (conn.fromElementId) {
+              const move = action.moves.find(m => m.elementId === conn.fromElementId)
+              if (move) {
+                const prevEl = prevSlide.elements.find(e => e.id === conn.fromElementId)
+                if (prevEl && prevEl.type !== 'connector') {
+                  const dx = move.x - prevEl.x
+                  const dy = move.y - prevEl.y
+                  newFrom = { x: conn.fromPoint.x + dx, y: conn.fromPoint.y + dy }
+                  updated = true
+                }
+              }
+            }
+            if (conn.toElementId) {
+              const move = action.moves.find(m => m.elementId === conn.toElementId)
+              if (move) {
+                const prevEl = prevSlide.elements.find(e => e.id === conn.toElementId)
+                if (prevEl && prevEl.type !== 'connector') {
+                  const dx = move.x - prevEl.x
+                  const dy = move.y - prevEl.y
+                  newTo = { x: conn.toPoint.x + dx, y: conn.toPoint.y + dy }
+                  updated = true
+                }
+              }
+            }
+            if (updated) return { ...conn, fromPoint: newFrom, toPoint: newTo }
+            return el
+          }),
+        }))
+      }
+      return newState
+    }
     case 'DELETE_ELEMENTS':
       return updateSlide(state, action.slideId, (s) => ({
         ...s,
@@ -460,6 +584,60 @@ function slidesReducer(state: SlidesDocument, action: SlideAction): SlidesDocume
         }),
       }))
 
+    case 'MERGE_TABLE_CELLS': {
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        elements: s.elements.map((el) => {
+          if (el.id !== action.elementId || el.type !== 'table') return el
+          const table = el as SlideTableElement
+          const existing = table.mergedCells || []
+          // Remove any overlapping merges
+          const filtered = existing.filter(m =>
+            !(m.startRow >= action.startRow && m.startRow < action.startRow + action.rowSpan &&
+              m.startCol >= action.startCol && m.startCol < action.startCol + action.colSpan)
+          )
+          return { ...table, mergedCells: [...filtered, { startRow: action.startRow, startCol: action.startCol, rowSpan: action.rowSpan, colSpan: action.colSpan }] }
+        }),
+      }))
+    }
+
+    case 'UNMERGE_TABLE_CELLS': {
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        elements: s.elements.map((el) => {
+          if (el.id !== action.elementId || el.type !== 'table') return el
+          const table = el as SlideTableElement
+          return { ...table, mergedCells: (table.mergedCells || []).filter(m => !(m.startRow === action.startRow && m.startCol === action.startCol)) }
+        }),
+      }))
+    }
+
+    case 'SET_TABLE_COL_WIDTH': {
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        elements: s.elements.map((el) => {
+          if (el.id !== action.elementId || el.type !== 'table') return el
+          const table = el as SlideTableElement
+          const colWidths = [...(table.colWidths || table.rows[0]?.map(() => 100) || [])]
+          colWidths[action.col] = action.width
+          return { ...table, colWidths }
+        }),
+      }))
+    }
+
+    case 'SET_TABLE_ROW_HEIGHT': {
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        elements: s.elements.map((el) => {
+          if (el.id !== action.elementId || el.type !== 'table') return el
+          const table = el as SlideTableElement
+          const rowHeights = [...(table.rowHeights || table.rows.map(() => 32) || [])]
+          rowHeights[action.row] = action.height
+          return { ...table, rowHeights }
+        }),
+      }))
+    }
+
     // Phase 2: Connector
     case 'ADD_CONNECTOR': {
       const conn: SlideConnectorElement = {
@@ -556,10 +734,26 @@ function slidesReducer(state: SlidesDocument, action: SlideAction): SlidesDocume
 
     // Phase B: Chart element
     case 'ADD_CHART_ELEMENT': {
-      const sampleData = {
-        labels: ['A', 'B', 'C', 'D'],
-        datasets: [{ label: 'データ1', values: [30, 50, 20, 40], color: '#6366f1' }],
-      }
+      // Multi-series chart types are only meaningful with 2+ datasets.
+      const multiSeries = ['stackedBar', 'stackedBar100', 'stackedArea', 'combo'].includes(action.chartType)
+      const isWaterfall = action.chartType === 'waterfall'
+      const sampleData = isWaterfall
+        ? {
+            labels: ['期首', '売上', '原価', '販管費', '期末'],
+            datasets: [{ label: '増減', values: [100, 60, -40, -25, 0], color: '#6366f1' }],
+          }
+        : multiSeries
+          ? {
+              labels: ['A', 'B', 'C', 'D'],
+              datasets: [
+                { label: 'データ1', values: [30, 50, 20, 40], color: '#6366f1' },
+                { label: 'データ2', values: [20, 25, 35, 15], color: '#f97316' },
+              ],
+            }
+          : {
+              labels: ['A', 'B', 'C', 'D'],
+              datasets: [{ label: 'データ1', values: [30, 50, 20, 40], color: '#6366f1' }],
+            }
       const chartEl: SlideChartElement = {
         id: generateId(),
         type: 'chart',
@@ -586,6 +780,14 @@ function slidesReducer(state: SlidesDocument, action: SlideAction): SlidesDocume
         ),
       }))
 
+    case 'UPDATE_CHART_PROPS':
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        elements: s.elements.map((e) =>
+          e.id === action.elementId && e.type === 'chart' ? { ...e, ...action.props } : e,
+        ),
+      }))
+
     case 'REPLACE_IMAGE':
       return updateSlide(state, action.slideId, (s) => ({
         ...s,
@@ -605,6 +807,358 @@ function slidesReducer(state: SlidesDocument, action: SlideAction): SlidesDocume
       return updateSlide(state, action.slideId, (s) => ({ ...s, masterId: action.masterId }))
     case 'SET_SLIDE_ELEMENTS':
       return updateSlide(state, action.slideId, (s) => ({ ...s, elements: action.elements }))
+
+    // Connector endpoint update with snap anchors
+    case 'UPDATE_CONNECTOR_ENDPOINTS': {
+      const targetSlide = state.slides.find(s => s.id === action.slideId)
+      if (!targetSlide) return state
+      const connEl = targetSlide.elements.find(e => e.id === action.elementId)
+      if (!connEl || connEl.type !== 'connector') return state
+      // Validate that referenced element IDs actually exist in the slide
+      const fromElId = action.fromElementId
+        ? (targetSlide.elements.some(e => e.id === action.fromElementId) ? action.fromElementId : undefined)
+        : undefined
+      const toElId = action.toElementId
+        ? (targetSlide.elements.some(e => e.id === action.toElementId) ? action.toElementId : undefined)
+        : undefined
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        elements: s.elements.map((el) => {
+          if (el.id !== action.elementId || el.type !== 'connector') return el
+          return {
+            ...el,
+            fromPoint: action.fromPoint,
+            toPoint: action.toPoint,
+            fromElementId: fromElId,
+            toElementId: toElId,
+          }
+        }),
+      }))
+    }
+
+    case 'IMPORT_SLIDES': {
+      const newSlides: Slide[] = action.slides.map((sd) => {
+        const slide = makeBlankSlide()
+        slide.elements = sd.elements
+        if (sd.themeKey) slide.themeKey = sd.themeKey
+        if (sd.transition) slide.transition = sd.transition
+        if (sd.transitionDuration) slide.transitionDuration = sd.transitionDuration
+        if (sd.notes) slide.notes = sd.notes
+        if (sd.customTheme) slide.customTheme = sd.customTheme
+        return slide
+      })
+      let updatedSlides: Slide[]
+      if (action.afterId) {
+        const idx = state.slides.findIndex(s => s.id === action.afterId)
+        if (idx >= 0) {
+          updatedSlides = [...state.slides.slice(0, idx + 1), ...newSlides, ...state.slides.slice(idx + 1)]
+        } else {
+          updatedSlides = [...state.slides, ...newSlides]
+        }
+      } else {
+        updatedSlides = [...state.slides, ...newSlides]
+      }
+      return {
+        ...state,
+        slides: updatedSlides,
+        activeSlideId: newSlides.length > 0 ? newSlides[0].id : state.activeSlideId,
+      }
+    }
+
+    // PowerPoint improvements
+    case 'SET_SLIDE_SIZE':
+      return { ...state, slideSize: action.slideSize }
+
+    case 'SET_TRANSITION_DURATION':
+      return updateSlide(state, action.slideId, (s) => ({ ...s, transitionDuration: action.duration }))
+
+    case 'ADD_SECTION': {
+      const section = { id: generateId(), name: action.name, color: action.color, startSlideIndex: action.startSlideIndex }
+      return { ...state, sections: [...(state.sections || []), section] }
+    }
+
+    case 'RENAME_SECTION':
+      return { ...state, sections: (state.sections || []).map(s => s.id === action.sectionId ? { ...s, name: action.name } : s) }
+
+    case 'DELETE_SECTION':
+      return { ...state, sections: (state.sections || []).filter(s => s.id !== action.sectionId) }
+
+    case 'UPDATE_MASTER': {
+      return { ...state, masters: (state.masters || []).map(m => m.id === action.masterId ? { ...m, ...action.master } : m) }
+    }
+
+    case 'DELETE_MASTER':
+      return { ...state, masters: (state.masters || []).filter(m => m.id !== action.masterId) }
+
+    case 'SET_AUTO_ADVANCE':
+      return updateSlide(state, action.slideId, (s) => ({ ...s, autoAdvance: action.seconds }))
+
+    case 'SET_TRANSITION_ALL': {
+      const slides = state.slides.map(s => ({
+        ...s,
+        transition: action.transition,
+        ...(action.duration !== undefined ? { transitionDuration: action.duration } : {})
+      }))
+      return { ...state, slides }
+    }
+
+    case 'FIND_REPLACE_TEXT': {
+      const targetSlides = action.slideIds || state.slides.map(s => s.id)
+      return {
+        ...state,
+        slides: state.slides.map(s => {
+          if (!targetSlides.includes(s.id)) return s
+          return {
+            ...s,
+            elements: s.elements.map(el => {
+              if (el.type !== 'title' && el.type !== 'subtitle' && el.type !== 'body' && el.type !== 'label') return el
+              const textEl = el as import('@/types').SlideTextElement
+              if (!textEl.content.includes(action.find)) return el
+              return { ...textEl, content: textEl.content.split(action.find).join(action.replace) }
+            })
+          }
+        })
+      }
+    }
+
+    // Sort elements by zIndex
+    case 'SORT_ELEMENTS_BY_ZINDEX':
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        elements: [...s.elements].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0)),
+      }))
+
+    // Lock/unlock element
+    case 'SET_ELEMENT_LOCKED':
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        elements: s.elements.map((e) => (e.id === action.elementId ? { ...e, locked: action.locked } : e)),
+      }))
+
+    // Set element opacity
+    case 'SET_ELEMENT_OPACITY':
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        elements: s.elements.map((e) =>
+          e.id === action.elementId ? { ...e, opacity: Math.max(0, Math.min(1, action.opacity)) } : e,
+        ),
+      }))
+
+    // Flip element
+    case 'FLIP_ELEMENT':
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        elements: s.elements.map((e) => {
+          if (e.id !== action.elementId) return e
+          if (action.direction === 'horizontal') return { ...e, flipH: !(e.flipH ?? false) }
+          return { ...e, flipV: !(e.flipV ?? false) }
+        }),
+      }))
+
+    // Align multiple elements (connectors excluded since they lack x/y/w/h)
+    case 'ALIGN_ELEMENTS': {
+      if (action.elementIds.length < 2) return state
+      return updateSlide(state, action.slideId, (s) => {
+        const targets = s.elements.filter(
+          (e): e is Exclude<SlideElement, SlideConnectorElement> =>
+            action.elementIds.includes(e.id) && e.type !== 'connector',
+        )
+        if (targets.length < 2) return s
+        const targetIds = new Set(targets.map((e) => e.id))
+        let updater: (e: Exclude<SlideElement, SlideConnectorElement>) => SlideElement
+        switch (action.alignment) {
+          case 'left': {
+            const minX = Math.min(...targets.map((e) => e.x))
+            updater = (e) => ({ ...e, x: minX })
+            break
+          }
+          case 'right': {
+            const maxRight = Math.max(...targets.map((e) => e.x + e.w))
+            updater = (e) => ({ ...e, x: maxRight - e.w })
+            break
+          }
+          case 'top': {
+            const minY = Math.min(...targets.map((e) => e.y))
+            updater = (e) => ({ ...e, y: minY })
+            break
+          }
+          case 'bottom': {
+            const maxBottom = Math.max(...targets.map((e) => e.y + e.h))
+            updater = (e) => ({ ...e, y: maxBottom - e.h })
+            break
+          }
+          case 'center-h': {
+            const avgCenterX = targets.reduce((sum, e) => sum + e.x + e.w / 2, 0) / targets.length
+            updater = (e) => ({ ...e, x: avgCenterX - e.w / 2 })
+            break
+          }
+          case 'center-v': {
+            const avgCenterY = targets.reduce((sum, e) => sum + e.y + e.h / 2, 0) / targets.length
+            updater = (e) => ({ ...e, y: avgCenterY - e.h / 2 })
+            break
+          }
+        }
+        return {
+          ...s,
+          elements: s.elements.map((e) =>
+            targetIds.has(e.id) && e.type !== 'connector'
+              ? (updater(e as Exclude<SlideElement, SlideConnectorElement>) as SlideElement)
+              : e,
+          ),
+        }
+      })
+    }
+
+    // Distribute elements evenly (connectors excluded)
+    case 'DISTRIBUTE_ELEMENTS': {
+      if (action.elementIds.length < 3) return state
+      return updateSlide(state, action.slideId, (s) => {
+        const targets = s.elements.filter(
+          (e): e is Exclude<SlideElement, SlideConnectorElement> =>
+            action.elementIds.includes(e.id) && e.type !== 'connector',
+        )
+        if (targets.length < 3) return s
+        if (action.direction === 'horizontal') {
+          const sorted = [...targets].sort((a, b) => a.x - b.x)
+          const first = sorted[0]
+          const last = sorted[sorted.length - 1]
+          const totalSpan = (last.x + last.w) - first.x
+          const totalElementWidth = sorted.reduce((sum, e) => sum + e.w, 0)
+          const gap = (totalSpan - totalElementWidth) / (sorted.length - 1)
+          const posMap = new Map<string, number>()
+          let currentX = first.x
+          for (const el of sorted) {
+            posMap.set(el.id, currentX)
+            currentX += el.w + gap
+          }
+          return {
+            ...s,
+            elements: s.elements.map((e) => {
+              const newX = posMap.get(e.id)
+              return newX !== undefined ? ({ ...e, x: newX } as SlideElement) : e
+            }),
+          }
+        } else {
+          const sorted = [...targets].sort((a, b) => a.y - b.y)
+          const first = sorted[0]
+          const last = sorted[sorted.length - 1]
+          const totalSpan = (last.y + last.h) - first.y
+          const totalElementHeight = sorted.reduce((sum, e) => sum + e.h, 0)
+          const gap = (totalSpan - totalElementHeight) / (sorted.length - 1)
+          const posMap = new Map<string, number>()
+          let currentY = first.y
+          for (const el of sorted) {
+            posMap.set(el.id, currentY)
+            currentY += el.h + gap
+          }
+          return {
+            ...s,
+            elements: s.elements.map((e) => {
+              const newY = posMap.get(e.id)
+              return newY !== undefined ? ({ ...e, y: newY } as SlideElement) : e
+            }),
+          }
+        }
+      })
+    }
+
+    // Set section metadata on a slide
+    case 'SET_SLIDE_SECTION':
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        sectionName: action.sectionName,
+        sectionColor: action.sectionColor,
+      }))
+
+    // Duplicate selected elements with offset
+    case 'DUPLICATE_ELEMENTS':
+      return updateSlide(state, action.slideId, (s) => {
+        const toDuplicate = s.elements.filter((e) => action.elementIds.includes(e.id))
+        const duplicated = toDuplicate.map((e) => {
+          if (e.type === 'connector') {
+            const conn = e as SlideConnectorElement
+            return {
+              ...conn,
+              id: generateId(),
+              fromPoint: { x: conn.fromPoint.x + 2, y: conn.fromPoint.y + 2 },
+              toPoint: { x: conn.toPoint.x + 2, y: conn.toPoint.y + 2 },
+              fromElementId: undefined,
+              toElementId: undefined,
+            }
+          }
+          return { ...e, id: generateId(), x: e.x + 2, y: e.y + 2 }
+        })
+        return { ...s, elements: [...s.elements, ...duplicated] }
+      })
+
+    // Move slide to a specific section position
+    case 'MOVE_SLIDE_TO_SECTION': {
+      const slideIdx = state.slides.findIndex((s) => s.id === action.slideId)
+      if (slideIdx === -1) return state
+      const targetIdx = Math.max(0, Math.min(action.sectionIndex, state.slides.length - 1))
+      if (slideIdx === targetIdx) return state
+      const slides = [...state.slides]
+      const [moved] = slides.splice(slideIdx, 1)
+      slides.splice(targetIdx, 0, moved)
+      return { ...state, slides }
+    }
+
+    // Toggle slide hidden
+    case 'TOGGLE_SLIDE_HIDDEN':
+      return updateSlide(state, action.slideId, (s) => ({ ...s, hidden: !s.hidden }))
+
+    // Cross-slide element paste
+    case 'PASTE_ELEMENTS_TO_SLIDE': {
+      return {
+        ...state,
+        slides: state.slides.map(s =>
+          s.id === action.slideId
+            ? {
+                ...s,
+                elements: [
+                  ...s.elements,
+                  ...action.elements.map(el => ({
+                    ...el,
+                    id: generateId(),
+                    x: ('x' in el ? el.x : 0) + 2,
+                    y: ('y' in el ? el.y : 0) + 2,
+                  })),
+                ] as SlideElement[],
+              }
+            : s,
+        ),
+      }
+    }
+
+    // Sort table rows by column
+    case 'SORT_TABLE': {
+      return updateSlide(state, action.slideId, (s) => ({
+        ...s,
+        elements: s.elements.map((el) => {
+          if (el.id !== action.elementId || el.type !== 'table') return el
+          const table = el as SlideTableElement
+          const headerRows = action.excludeHeader && table.rows.length > 0 ? [table.rows[0]] : []
+          const dataRows = action.excludeHeader ? table.rows.slice(1) : [...table.rows]
+          const col = action.col
+
+          dataRows.sort((a, b) => {
+            const valA = (a[col] || '').replace(/<[^>]*>/g, '').trim()
+            const valB = (b[col] || '').replace(/<[^>]*>/g, '').trim()
+            const numA = parseFloat(valA)
+            const numB = parseFloat(valB)
+            // Numeric comparison if both values are valid numbers
+            if (!isNaN(numA) && !isNaN(numB)) {
+              return action.direction === 'asc' ? numA - numB : numB - numA
+            }
+            // String comparison
+            const cmp = valA.localeCompare(valB, 'ja')
+            return action.direction === 'asc' ? cmp : -cmp
+          })
+
+          return { ...table, rows: [...headerRows, ...dataRows] }
+        }),
+      }))
+    }
 
     default:
       return state

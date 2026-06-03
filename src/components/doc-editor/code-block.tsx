@@ -224,6 +224,17 @@ export default function CodeBlock({ content, language = 'plaintext', onUpdate, o
               onUpdate(e.target.value)
               setEditing(false)
             }}
+            onKeyDown={(e) => {
+              if (e.key === 'Tab') {
+                e.preventDefault()
+                const textarea = e.currentTarget
+                const start = textarea.selectionStart
+                const end = textarea.selectionEnd
+                const value = textarea.value
+                textarea.value = value.substring(0, start) + '  ' + value.substring(end)
+                textarea.selectionStart = textarea.selectionEnd = start + 2
+              }
+            }}
             spellCheck={false}
           />
         ) : (

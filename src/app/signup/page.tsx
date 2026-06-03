@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import { FileText, Mail, Lock, UserPlus, CheckCircle2 } from 'lucide-react'
+import { FileText, Mail, Lock, UserPlus, CheckCircle2, ArrowRight } from 'lucide-react'
 
 function GitHubIcon({ size = 18 }: { size?: number }) {
   return (
@@ -30,80 +30,69 @@ export default function SignupPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
-  const supabase = createClient()
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
+  function getSupabase() {
+    if (!supabaseRef.current) supabaseRef.current = createClient()
+    return supabaseRef.current
+  }
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     setLoading(true)
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    })
-    setLoading(false)
+    const { error } = await getSupabase().auth.signUp({ email, password })
     if (error) {
-      setError(error.message)
+      if (error.message === 'Supabase未接続') {
+        setError('現在メール登録は利用できません。ダッシュボードへ直接お進みください。')
+      } else {
+        setError(error.message)
+      }
+      setLoading(false)
     } else {
       setSuccess(true)
+      setLoading(false)
     }
   }
 
   async function handleGitHubLogin() {
     setError('')
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await getSupabase().auth.signInWithOAuth({
       provider: 'github',
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     })
-    if (error) setError(error.message)
+    if (error) {
+      if (error.message === 'Supabase未接続') {
+        setError('現在GitHub認証は利用できません。ダッシュボードへ直接お進みください。')
+      } else {
+        setError(error.message)
+      }
+    }
   }
 
   async function handleGoogleLogin() {
     setError('')
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await getSupabase().auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     })
-    if (error) setError(error.message)
+    if (error) {
+      if (error.message === 'Supabase未接続') {
+        setError('現在Google認証は利用できません。ダッシュボードへ直接お進みください。')
+      } else {
+        setError(error.message)
+      }
+    }
   }
 
   if (success) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4 relative overflow-hidden">
-        {/* Animated gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-950/40 via-slate-950 to-violet-950/40" />
-
-        {/* Decorative gradient orbs */}
-        <div className="absolute top-1/4 -left-32 w-96 h-96 bg-emerald-600/15 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl animate-pulse [animation-delay:1s]" />
-
-        <div className="w-full max-w-sm relative z-10 text-center">
-          <div className="flex items-center justify-center gap-2.5 mb-6">
-            <div className="relative">
-              <div className="absolute inset-0 bg-indigo-400/30 blur-lg rounded-full scale-150" />
-              <FileText size={36} className="text-indigo-400 relative" />
-            </div>
-            <span className="text-2xl font-bold text-white tracking-tight">DocCraft</span>
-          </div>
-          <div className="backdrop-blur-xl bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 shadow-2xl shadow-black/20">
-            {/* Checkmark animation */}
-            <div className="flex justify-center mb-4">
-              <div className="relative">
-                <div className="absolute inset-0 bg-emerald-400/20 blur-xl rounded-full scale-150 animate-pulse" />
-                <CheckCircle2 size={48} className="text-emerald-400 relative animate-[bounce_1s_ease-in-out]" />
-              </div>
-            </div>
-            <h2 className="text-lg font-semibold text-white mb-2">確認メールを送信しました</h2>
-            <p className="text-slate-400 text-sm mb-5">
-              <strong className="text-white">{email}</strong> に確認メールを送信しました。
-              メール内のリンクをクリックしてアカウントを有効化してください。
-            </p>
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm font-medium transition-colors"
-            >
-              ログインページに戻る
-            </Link>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm text-center">
+          <div className="backdrop-blur-xl bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 shadow-2xl">
+            <CheckCircle2 size={48} className="text-emerald-400 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">登録完了</h2>
+            <p className="text-slate-400 text-sm mb-6">確認メールを送信しました。メール内のリンクをクリックしてアカウントを有効化してください。</p>
+            <Link href="/login" className="text-indigo-400 hover:text-indigo-300 text-sm font-medium">ログインページへ</Link>
           </div>
         </div>
       </div>
@@ -112,18 +101,13 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4 relative overflow-hidden">
-      {/* Animated gradient background */}
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-950/40 via-slate-950 to-violet-950/40" />
-
-      {/* Decorative gradient orbs */}
       <div className="absolute top-1/4 -left-32 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl animate-pulse" />
       <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-violet-600/15 rounded-full blur-3xl animate-pulse [animation-delay:1s]" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-500/5 rounded-full blur-3xl" />
 
-      {/* Card */}
       <div className="w-full max-w-sm relative z-10">
         <div className="backdrop-blur-xl bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 shadow-2xl shadow-black/20">
-          {/* Logo */}
           <div className="text-center mb-8">
             <div className="flex items-center justify-center gap-2.5 mb-3">
               <div className="relative">
@@ -132,10 +116,10 @@ export default function SignupPage() {
               </div>
               <span className="text-2xl font-bold text-white tracking-tight">DocCraft</span>
             </div>
-            <p className="text-slate-400 text-sm">新しいアカウントを作成</p>
+            <p className="text-slate-400 text-sm">新規アカウント登録</p>
           </div>
 
-          {/* OAuth Signup */}
+          {/* OAuth */}
           <button
             onClick={handleGoogleLogin}
             className="w-full flex items-center justify-center gap-2.5 py-3 px-4 bg-white hover:bg-gray-50 border border-slate-200 rounded-xl text-gray-700 text-sm font-medium transition-all duration-200 mb-3 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/10"
@@ -151,7 +135,15 @@ export default function SignupPage() {
             GitHubで登録
           </button>
 
-          {/* Divider */}
+          {/* ダッシュボードへ直接進む */}
+          <Link
+            href="/dashboard"
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-xl text-white text-sm font-medium transition-all duration-200 mb-3 hover:-translate-y-0.5 shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30"
+          >
+            <ArrowRight size={16} />
+            登録せずに始める
+          </Link>
+
           <div className="flex items-center gap-4 mb-6">
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-600/50 to-transparent" />
             <span className="text-xs text-slate-400 font-medium px-2">または</span>
@@ -192,16 +184,15 @@ export default function SignupPage() {
               className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 rounded-xl text-white text-sm font-medium transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30 hover:brightness-110"
             >
               <UserPlus size={16} />
-              {loading ? '登録中...' : '新規登録'}
+              {loading ? '登録中...' : 'メールで登録'}
             </button>
           </form>
         </div>
 
-        {/* Bottom link */}
         <div className="mt-6 text-center">
           <div className="inline-block backdrop-blur-sm bg-white/[0.03] border border-white/[0.06] rounded-xl px-6 py-3">
             <p className="text-sm text-slate-400">
-              既にアカウントをお持ちの方は{' '}
+              すでにアカウントをお持ちの方は{' '}
               <Link href="/login" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
                 ログイン
               </Link>

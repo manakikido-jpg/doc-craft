@@ -11,22 +11,60 @@ interface Props {
   existing?: DataValidation
 }
 
-const TYPES: { value: DataValidation['type']; label: string }[] = [
+type UIType = DataValidation['type'] | 'chip'
+
+const TYPES: { value: UIType; label: string }[] = [
   { value: 'number', label: '数値' },
   { value: 'text', label: 'テキスト' },
   { value: 'list', label: 'リスト' },
   { value: 'date', label: '日付' },
+  { value: 'chip', label: 'チップ' },
 ]
 
+const CHIP_PRESET_COLORS = [
+  { name: 'red', value: '#ef4444' },
+  { name: 'orange', value: '#f97316' },
+  { name: 'yellow', value: '#eab308' },
+  { name: 'green', value: '#22c55e' },
+  { name: 'cyan', value: '#06b6d4' },
+  { name: 'blue', value: '#3b82f6' },
+  { name: 'purple', value: '#8b5cf6' },
+  { name: 'gray', value: '#6b7280' },
+]
+
+interface ChipOption {
+  label: string
+  color: string
+}
+
+  function parseChipsFromList(listVals?: string[]): ChipOption[] {
+    if (!listVals) return [{ label: '', color: CHIP_PRESET_COLORS[0].value }]
+    const chips: ChipOption[] = []
+    for (const v of listVals) {
+      const colonIdx = v.lastIndexOf(':')
+      if (colonIdx > 0) {
+        chips.push({ label: v.slice(0, colonIdx), color: v.slice(colonIdx + 1) })
+      } else {
+        chips.push({ label: v, color: CHIP_PRESET_COLORS[0].value })
+      }
+    }
+    return chips.length > 0 ? chips : [{ label: '', color: CHIP_PRESET_COLORS[0].value }]
+  }
+
 export function DataValidationDialog({ onApply, onRemove, onClose, existing }: Props) {
-  const [type, setType] = useState<DataValidation['type']>(existing?.type ?? 'number')
+  // Detect if existing validation is a chip type (list values with color encoding)
+  const isExistingChip = existing?.type === 'list' && existing.listValues?.some((v) => v.includes(':'))
+  const [type, setType] = useState<UIType>(isExistingChip ? 'chip' : (existing?.type ?? 'number'))
   const [min, setMin] = useState(existing?.min?.toString() ?? '')
   const [max, setMax] = useState(existing?.max?.toString() ?? '')
   const [listValues, setListValues] = useState(existing?.listValues?.join(', ') ?? '')
   const [errorMessage, setErrorMessage] = useState(existing?.errorMessage ?? '')
+  const [rejectInput, setRejectInput] = useState(existing?.rejectInput ?? false)
+  const [chipOptions, setChipOptions] = useState<ChipOption[]>(() => isExistingChip ? parseChipsFromList(existing?.listValues) : [{ label: '', color: CHIP_PRESET_COLORS[0].value }])
 
   const handleApply = () => {
-    const validation: DataValidation = { type, errorMessage: errorMessage || undefined }
+    const actualType: DataValidation['type'] = type === 'chip' ? 'list' : type
+    const validation: DataValidation = { type: actualType, errorMessage: errorMessage || undefined, rejectInput: rejectInput || undefined }
     if (type === 'number') {
       if (min) validation.min = Number(min)
       if (max) validation.max = Number(max)
@@ -37,6 +75,10 @@ export function DataValidationDialog({ onApply, onRemove, onClose, existing }: P
     } else if (type === 'date') {
       if (min) validation.min = Number(min)
       if (max) validation.max = Number(max)
+    } else if (type === 'chip') {
+      validation.listValues = chipOptions
+        .filter((c) => c.label.trim())
+        .map((c) => `${c.label.trim()}:${c.color}`)
     }
     onApply(validation)
   }
@@ -63,7 +105,7 @@ export function DataValidationDialog({ onApply, onRemove, onClose, existing }: P
             <label className="text-xs text-slate-400 block mb-1">種類</label>
             <select
               value={type}
-              onChange={(e) => setType(e.target.value as DataValidation['type'])}
+              onChange={(e) => setType(e.target.value as UIType)}
               className="w-full h-8 bg-slate-700 border border-slate-600 rounded text-xs text-white px-2 outline-none focus:border-indigo-500"
             >
               {TYPES.map((t) => (
@@ -151,6 +193,89 @@ export function DataValidationDialog({ onApply, onRemove, onClose, existing }: P
               </div>
             </div>
           )}
+
+          {/* Chip options */}
+          {type === 'chip' && (
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">チップオプション</label>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {chipOptions.map((chip, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={chip.label}
+                      onChange={(e) => {
+                        const updated = [...chipOptions]
+                        updated[idx] = { ...updated[idx], label: e.target.value }
+                        setChipOptions(updated)
+                      }}
+                      placeholder={`オプション ${idx + 1}`}
+                      className="flex-1 h-7 bg-slate-700 border border-slate-600 rounded text-xs text-white px-2 outline-none focus:border-indigo-500"
+                    />
+                    <div className="flex gap-0.5">
+                      {CHIP_PRESET_COLORS.map((pc) => (
+                        <button
+                          key={pc.name}
+                          type="button"
+                          onClick={() => {
+                            const updated = [...chipOptions]
+                            updated[idx] = { ...updated[idx], color: pc.value }
+                            setChipOptions(updated)
+                          }}
+                          className={`w-4 h-4 rounded-full border ${chip.color === pc.value ? 'border-white ring-1 ring-white' : 'border-slate-600'}`}
+                          style={{ backgroundColor: pc.value }}
+                          title={pc.name}
+                        />
+                      ))}
+                    </div>
+                    {chipOptions.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setChipOptions(chipOptions.filter((_, i) => i !== idx))}
+                        className="text-slate-500 hover:text-red-400 text-xs px-1"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {chipOptions.length < 8 && (
+                <button
+                  type="button"
+                  onClick={() => setChipOptions([...chipOptions, { label: '', color: CHIP_PRESET_COLORS[chipOptions.length % CHIP_PRESET_COLORS.length].value }])}
+                  className="mt-2 text-xs text-indigo-400 hover:text-indigo-300"
+                >
+                  ＋ オプション追加
+                </button>
+              )}
+              {/* Chip preview */}
+              {chipOptions.some((c) => c.label.trim()) && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {chipOptions.filter((c) => c.label.trim()).map((c, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium text-white"
+                      style={{ backgroundColor: c.color }}
+                    >
+                      {c.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reject input toggle */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={rejectInput}
+              onChange={(e) => setRejectInput(e.target.checked)}
+              className="accent-indigo-500"
+            />
+            <span className="text-xs text-white">無効な値を拒否する</span>
+          </label>
 
           {/* Error message */}
           <div>

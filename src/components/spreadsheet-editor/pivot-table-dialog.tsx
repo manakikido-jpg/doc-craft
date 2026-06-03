@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { X, Table2, ArrowRight } from 'lucide-react'
+import { useState, useMemo, useCallback } from 'react'
+import { X, Table2, ArrowRight, RefreshCw } from 'lucide-react'
 import type { Sheet } from '@/types'
 import type { SelectionRange } from './spreadsheet-editor'
 import { colIndexToLetter } from '@/lib/formula-engine'
@@ -46,6 +46,17 @@ export default function PivotTableDialog({ sheet, selectionRange, computedValues
   const [rowField, setRowField] = useState<number>(range.startCol)
   const [valueField, setValueField] = useState<number>(range.startCol + 1 <= range.endCol ? range.startCol + 1 : range.startCol)
   const [aggFunc, setAggFunc] = useState<AggFunc>('sum')
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [lastRefreshed, setLastRefreshed] = useState<string>(() => {
+    const now = new Date()
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  })
+
+  const handleRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1)
+    const now = new Date()
+    setLastRefreshed(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`)
+  }, [])
 
   // Build pivot data
   const pivotResult = useMemo((): PivotResult => {
@@ -124,7 +135,8 @@ export default function PivotTableDialog({ sheet, selectionRange, computedValues
     }
 
     return { headers, rows }
-  }, [range, rowField, valueField, aggFunc, computedValues, sheet.cells, columnNames])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, rowField, valueField, aggFunc, computedValues, sheet.cells, columnNames, refreshKey])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
@@ -136,12 +148,22 @@ export default function PivotTableDialog({ sheet, selectionRange, computedValues
             <Table2 size={18} className="text-cyan-400" />
             ピボットテーブル
           </h2>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-slate-500">最終更新: {lastRefreshed}</span>
+            <button
+              onClick={handleRefresh}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              title="更新"
+            >
+              <RefreshCw size={16} />
+            </button>
+            <button
+              onClick={onClose}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Settings */}

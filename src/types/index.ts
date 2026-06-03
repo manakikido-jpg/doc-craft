@@ -1,4 +1,4 @@
-export type DocumentType = 'slides' | 'doc' | 'spreadsheet'
+export type DocumentType = 'slides' | 'doc' | 'spreadsheet' | 'design'
 
 export interface DocumentMeta {
   id: string
@@ -19,6 +19,7 @@ export type SlideThemeKey =
   | 'white-clean'
   | 'midnight'
   | 'ocean'
+  | 'brand'
 
 export interface SlideTheme {
   key: SlideThemeKey
@@ -54,6 +55,7 @@ export interface ElementAnimation {
   order?: number
   delay?: number
   duration?: number
+  easing?: 'linear' | 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'bounce'
 }
 
 export interface ElementShadow {
@@ -79,6 +81,7 @@ export interface BaseSlideElement {
   flipH?: boolean
   flipV?: boolean
   locked?: boolean
+  hyperlink?: string
 }
 
 export interface SlideTextElement extends BaseSlideElement {
@@ -93,6 +96,22 @@ export interface SlideTextElement extends BaseSlideElement {
   lineHeight?: number
   textShadow?: boolean
   highlightColor?: string
+  fontStyle?: 'normal' | 'italic'
+  textDecoration?: 'none' | 'underline'
+  underline?: boolean
+  strikethrough?: boolean
+  verticalAlign?: 'top' | 'middle' | 'bottom'
+  bulletType?: 'none' | 'disc' | 'circle' | 'square' | 'decimal' | 'alpha' | 'roman'
+  indentLevel?: number  // 0-5
+  writingMode?: 'horizontal' | 'vertical'
+  padding?: { top: number; right: number; bottom: number; left: number }
+  textColumns?: 1 | 2 | 3
+  autoSize?: 'none' | 'shrink' | 'grow'
+  superscript?: boolean
+  subscript?: boolean
+  wordArtStyle?: 'none' | 'outline' | 'glow' | 'shadow3d'
+  paragraphSpacingBefore?: number  // px
+  paragraphSpacingAfter?: number   // px
 }
 
 export interface SlideImageElement extends BaseSlideElement {
@@ -103,6 +122,10 @@ export interface SlideImageElement extends BaseSlideElement {
   brightness?: number
   contrast?: number
   blur?: number
+  maskShape?: 'none' | 'circle' | 'triangle' | 'star' | 'hexagon' | 'rounded-rect'
+  colorFilter?: 'none' | 'grayscale' | 'sepia' | 'high-contrast' | 'washout' | 'cool' | 'warm' | 'vintage' | 'duotone'
+  imageStyle?: { borderRadius?: string; boxShadow?: string; border?: string }
+  objectFit?: 'cover' | 'contain' | 'fill'
 }
 
 export interface SlideShapeElement extends BaseSlideElement {
@@ -131,6 +154,8 @@ export interface SlideShapeElement extends BaseSlideElement {
   textContent?: string
   textColor?: string
   textFontSize?: number
+  cornerRadius?: number  // 0-50 for rounded rect
+  gradientType?: 'linear' | 'radial'
 }
 
 export interface SlideTableElement extends BaseSlideElement {
@@ -155,6 +180,11 @@ export interface SlideConnectorElement extends Omit<BaseSlideElement, 'x' | 'y' 
   stroke: string
   strokeWidth?: number
   arrowHead?: boolean
+  arrowHeadType?: 'triangle' | 'diamond' | 'circle' | 'none'
+  arrowTailType?: 'triangle' | 'diamond' | 'circle' | 'none'
+  label?: string
+  labelFontSize?: number
+  labelColor?: string
 }
 
 export interface SlideVideoElement extends BaseSlideElement {
@@ -171,11 +201,25 @@ export interface SlideAudioElement extends BaseSlideElement {
 
 export interface SlideChartElement extends BaseSlideElement {
   type: 'chart'
-  chartType: 'bar' | 'line' | 'pie' | 'donut'
-  data: { labels: string[]; datasets: { label: string; values: number[]; color: string }[] }
+  chartType:
+    | 'bar' | 'line' | 'pie' | 'donut' | 'area' | 'scatter' | 'radar' | 'horizontalBar'
+    | 'stackedBar' | 'stackedBar100' | 'stackedArea' | 'steppedLine' | 'smoothLine'
+    | 'bubble' | 'combo' | 'funnel' | 'waterfall'
+  data: { labels: string[]; datasets: { label: string; values: number[]; color: string; axis?: 'primary' | 'secondary' }[] }
   showLegend?: boolean
   showValues?: boolean
   title?: string
+  axisLabelX?: string
+  axisLabelY?: string
+  showGridLines?: boolean
+  dataLabelPosition?: 'none' | 'above' | 'center' | 'outside'
+  trendLine?: 'none' | 'linear' | 'exponential' | 'moving-average'
+  trendLineColor?: string
+  dualAxis?: boolean
+  secondaryAxisLabel?: string
+  chartAnimation?: 'none' | 'grow' | 'fade' | 'slide-up' | 'cascade'
+  chartAnimationDuration?: number
+  colorTheme?: 'default' | 'mono' | 'pastel' | 'vivid' | 'ocean' | 'warm'
 }
 
 export type SlideElement =
@@ -211,10 +255,20 @@ export interface Slide {
     | 'wipe-up'
     | 'flip'
     | 'cube'
+    | 'morph'
   customTheme?: Partial<SlideTheme>
+  backgroundColor?: string
   backgroundImage?: string
   backgroundFit?: 'cover' | 'contain' | 'stretch'
   masterId?: string
+  sectionName?: string
+  sectionColor?: string
+  transitionDuration?: number  // ms, default 500
+  autoAdvance?: number  // seconds, 0 = manual
+  hidden?: boolean
+  lockedElementIds?: string[]
+  hiddenElementIds?: string[]
+  elementGroups?: Record<string, string[]>
 }
 
 export interface Comment {
@@ -226,6 +280,7 @@ export interface Comment {
   author: string
   createdAt: string
   resolved?: boolean
+  mentions?: string[]
 }
 
 export interface VersionSnapshot {
@@ -243,12 +298,18 @@ export interface SlidesDocument {
   versions?: VersionSnapshot[]
   masters?: SlideMaster[]
   globalFooter?: { text?: string; showDate?: boolean; showSlideNumber?: boolean }
+  slideSize?: { width: number; height: number; preset: '16:9' | '4:3' | 'a4' | 'custom' }
+  sections?: { id: string; name: string; color?: string; startSlideIndex: number }[]
+  outlineCollapsed?: Record<string, boolean>  // slideId -> collapsed state
 }
 
 export type BlockType =
   | 'h1'
   | 'h2'
   | 'h3'
+  | 'h4'
+  | 'h5'
+  | 'h6'
   | 'paragraph'
   | 'bullet'
   | 'numbered'
@@ -269,6 +330,8 @@ export type BlockType =
   | 'columns'
   | 'signature'
   | 'cover-page'
+  | 'section-break'
+  | 'column-break'
 
 export type CalloutVariant = 'info' | 'warning' | 'success' | 'error'
 
@@ -284,6 +347,8 @@ export interface DrawingStroke {
   fill?: string
 }
 
+export type NumberFormat = 'decimal' | 'upper-alpha' | 'lower-alpha' | 'upper-roman' | 'lower-roman' | 'katakana' | 'kanji'
+
 export interface Block {
   id: string
   type: BlockType
@@ -291,7 +356,7 @@ export interface Block {
   indent?: number
   data?: Record<string, string>
   lineSpacing?: number
-  paragraphSpacing?: 'compact' | 'normal' | 'wide'
+  paragraphSpacing?: 'compact' | 'normal' | 'wide' | 'extra-wide'
   columns?: 1 | 2 | 3
   align?: 'left' | 'center' | 'right' | 'justify'
   textColor?: string
@@ -304,11 +369,17 @@ export interface Block {
   borderWidth?: number
   // Drop cap
   dropCap?: boolean
+  // Text indent (first line indent in em)
+  textIndent?: number
   // Divider style
   dividerStyle?: DividerStyle
   dividerColor?: string
   // Drawing data
   strokes?: DrawingStroke[]
+  // Numbered list options
+  numberFormat?: NumberFormat
+  restartNumbering?: boolean
+  startNumber?: number
 }
 
 export interface PageSettings {
@@ -318,6 +389,10 @@ export interface PageSettings {
   marginBottom: number
   marginLeft: number
   marginRight: number
+  mirrorMargins?: boolean
+  hyphens?: 'none' | 'auto' | 'manual'
+  verticalAlign?: 'top' | 'center' | 'justify' | 'bottom'
+  pageBackground?: string
 }
 
 export interface HeaderFooterSettings {
@@ -329,6 +404,20 @@ export interface HeaderFooterSettings {
   footerRight?: string
   showPageNumbers?: boolean
   pageNumberPosition?: 'left' | 'center' | 'right'
+  differentFirstPage?: boolean
+  differentOddEven?: boolean
+  oddHeaderLeft?: string
+  oddHeaderCenter?: string
+  oddHeaderRight?: string
+  evenHeaderLeft?: string
+  evenHeaderCenter?: string
+  evenHeaderRight?: string
+  oddFooterLeft?: string
+  oddFooterCenter?: string
+  oddFooterRight?: string
+  evenFooterLeft?: string
+  evenFooterCenter?: string
+  evenFooterRight?: string
 }
 
 export interface WatermarkSettings {
@@ -345,6 +434,17 @@ export interface Bookmark {
   blockId: string
 }
 
+export interface TrackChange {
+  id: string
+  blockId: string
+  type: 'insert' | 'delete' | 'modify'
+  oldContent?: string
+  newContent?: string
+  author: string
+  timestamp: string
+  accepted?: boolean
+}
+
 export interface DocDocument {
   meta: DocumentMeta
   blocks: Block[]
@@ -354,6 +454,10 @@ export interface DocDocument {
   headerFooter?: HeaderFooterSettings
   watermark?: WatermarkSettings
   bookmarks?: Bookmark[]
+  trackChanges?: TrackChange[]
+  trackChangesEnabled?: boolean
+  footnotePosition?: 'page' | 'end'
+  pageBorder?: { style: string; color: string; width: number }
 }
 
 // ── Spreadsheet types ──
@@ -373,12 +477,28 @@ export interface CellFormat {
   borderRight?: string
   borderBottom?: string
   borderLeft?: string
-  numberFormat?: 'plain' | 'number' | 'percent' | 'currency' | 'date' | 'time' | 'scientific' | 'fraction'
+  numberFormat?: 'plain' | 'number' | 'percent' | 'currency' | 'date' | 'time' | 'scientific' | 'fraction' | 'custom' | 'accounting' | 'currencyUSD' | 'currencyEUR' | 'comma'
+  customFormat?: string
+  fontFamily?: string
+  rotation?: number       // 0-360 degrees
+  indent?: number         // 0-5 levels
+  locked?: boolean        // cell protection
+}
+
+export interface CellComment {
+  author: string
+  text: string
+  timestamp: number
+  resolved?: boolean
 }
 
 export interface Cell {
   value: string
   format?: CellFormat
+  comment?: string
+  comments?: CellComment[]
+  checkbox?: boolean
+  hyperlink?: { url: string; label?: string }
 }
 
 export interface MergedCellRange {
@@ -391,7 +511,7 @@ export interface MergedCellRange {
 export interface ConditionalFormat {
   id: string
   range: { startRow: number; startCol: number; endRow: number; endCol: number }
-  rule: 'greaterThan' | 'lessThan' | 'equalTo' | 'between' | 'textContains' | 'isEmpty' | 'isNotEmpty'
+  rule: 'greaterThan' | 'lessThan' | 'equalTo' | 'between' | 'textContains' | 'isEmpty' | 'isNotEmpty' | 'topN' | 'bottomN' | 'aboveAverage' | 'belowAverage' | 'duplicate' | 'unique' | 'colorScale' | 'dataBar'
   values: string[]
   style: { bgColor?: string; textColor?: string; bold?: boolean }
 }
@@ -402,11 +522,13 @@ export interface DataValidation {
   max?: number
   listValues?: string[]
   errorMessage?: string
+  rejectInput?: boolean
 }
 
 export interface Sheet {
   id: string
   name: string
+  color?: string
   cells: Record<string, Cell>
   colWidths: Record<number, number>
   rowHeights: Record<number, number>
@@ -419,12 +541,63 @@ export interface Sheet {
   filterState?: { col: number; values: string[] }[]
   conditionalFormats?: ConditionalFormat[]
   dataValidation?: Record<string, DataValidation>  // key: "row-col"
+  hiddenRows?: number[]
+  hiddenCols?: number[]
+  rowGroups?: { start: number; end: number; collapsed?: boolean }[]
+  colGroups?: { start: number; end: number; collapsed?: boolean }[]
+  protected?: boolean
+}
+
+export type SpreadsheetChartType =
+  | 'bar' | 'line' | 'pie' | 'scatter'
+  | 'area' | 'stackedBar' | 'stackedBar100' | 'horizontalBar' | 'donut' | 'combo'
+
+export interface SpreadsheetChart {
+  id: string
+  chartType: SpreadsheetChartType
+  title: string
+  range: { startRow: number; startCol: number; endRow: number; endCol: number }
+  x: number
+  y: number
 }
 
 export interface SpreadsheetDocument {
   meta: DocumentMeta
   sheets: Sheet[]
   activeSheetId: string
+  /** Charts overlaid on the grid; reference a cell range and update live. */
+  charts?: SpreadsheetChart[]
+}
+
+// ── Design types ──
+
+export type DesignCanvasPreset =
+  | 'instagram-post'
+  | 'instagram-story'
+  | 'twitter-post'
+  | 'twitter-header'
+  | 'facebook-post'
+  | 'facebook-cover'
+  | 'youtube-thumbnail'
+  | 'poster-a4'
+  | 'business-card'
+  | 'presentation-16:9'
+  | 'banner-wide'
+  | 'custom'
+
+export interface DesignCanvasSize {
+  width: number
+  height: number
+  preset: DesignCanvasPreset
+  label: string
+}
+
+export interface DesignDocument {
+  meta: DocumentMeta
+  canvas: Slide
+  canvasSize: DesignCanvasSize
+  comments?: Comment[]
+  versions?: VersionSnapshot[]
 }
 
 export interface AIGenerateRequest {

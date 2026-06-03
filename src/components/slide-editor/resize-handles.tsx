@@ -11,6 +11,8 @@ interface Props {
   canvasRef: React.RefObject<HTMLDivElement | null>
   onResize: (x: number, y: number, w: number, h: number) => void
   onRotate?: (rotation: number) => void
+  snapToGrid?: boolean
+  gridSize?: number
 }
 
 type HandlePosition = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
@@ -26,8 +28,13 @@ const HANDLE_CURSORS: Record<HandlePosition, string> = {
   w: 'ew-resize',
 }
 
-export default function ResizeHandles({ x, y, w, h, rotation: _rotation, canvasRef, onResize, onRotate }: Props) {
+export default function ResizeHandles({ x, y, w, h, rotation: _rotation, canvasRef, onResize, onRotate, snapToGrid, gridSize }: Props) {
   const handleSize = 8
+
+  function snapVal(val: number): number {
+    if (!snapToGrid || !gridSize) return val
+    return Math.round(val / gridSize) * gridSize
+  }
 
   const startResize = useCallback(
     (e: React.MouseEvent, handle: HandlePosition) => {
@@ -75,7 +82,7 @@ export default function ResizeHandles({ x, y, w, h, rotation: _rotation, canvasR
 
         nx = Math.max(0, Math.min(95, nx))
         ny = Math.max(0, Math.min(95, ny))
-        onResize(nx, ny, nw, nh)
+        onResize(snapVal(nx), snapVal(ny), snapVal(nw), snapVal(nh))
       }
 
       function onMouseUp() {
@@ -85,7 +92,7 @@ export default function ResizeHandles({ x, y, w, h, rotation: _rotation, canvasR
       document.addEventListener('mousemove', onMouseMove)
       document.addEventListener('mouseup', onMouseUp)
     },
-    [x, y, w, h, canvasRef, onResize],
+    [x, y, w, h, canvasRef, onResize, snapToGrid, gridSize],
   )
 
   const startRotate = useCallback(
@@ -99,7 +106,10 @@ export default function ResizeHandles({ x, y, w, h, rotation: _rotation, canvasR
       const centerY = rect.top + ((y + (h || 0) / 2) / 100) * rect.height
 
       function onMouseMove(ev: MouseEvent) {
-        const angle = Math.atan2(ev.clientY - centerY, ev.clientX - centerX) * (180 / Math.PI) + 90
+        let angle = Math.atan2(ev.clientY - centerY, ev.clientX - centerX) * (180 / Math.PI) + 90
+        if (ev.shiftKey) {
+          angle = Math.round(angle / 15) * 15
+        }
         onRotate!(Math.round(angle))
       }
       function onMouseUp() {

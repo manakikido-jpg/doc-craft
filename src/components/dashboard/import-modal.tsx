@@ -2,10 +2,10 @@
 
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Upload, FileText, X, FileSpreadsheet, AlertCircle } from 'lucide-react'
-import { createDocument, saveDocDoc, saveSpreadsheetDoc, getDocDoc, getSpreadsheetDoc } from '@/lib/cloud-store'
+import { Upload, FileText, X, FileSpreadsheet, AlertCircle, Presentation } from 'lucide-react'
+import { createDocument, saveDocDoc, saveSpreadsheetDoc, getDocDoc, getSpreadsheetDoc, getSlideDoc, saveSlideDoc } from '@/lib/storage/cloud-store'
 import { generateId } from '@/lib/utils'
-import type { Block, Cell } from '@/types'
+import type { Block, BlockType, Cell, Slide, SlideTextElement } from '@/types'
 
 interface Props {
   open: boolean
@@ -121,6 +121,266 @@ function parseCSVToSpreadsheet(text: string): { cells: Record<string, Cell>; row
   }
 }
 
+function parseDocxXml(xmlString: string): Block[] {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(xmlString, 'application/xml')
+  const blocks: Block[] = []
+  const body = doc.querySelector('body') || doc.documentElement
+  const paragraphs = body.getElementsByTagName('w:p')
+
+  for (let i = 0; i < paragraphs.length; i++) {
+    const p = paragraphs[i]
+    let blockType: BlockType = 'paragraph'
+    const pStyle = p.querySelector('pPr > pStyle')
+    const styleName = pStyle?.getAttribute('w:val')?.toLowerCase() || ''
+
+    if (styleName.includes('heading1') || styleName === '1' || styleName.includes('title')) {
+      blockType = 'h1'
+    } else if (styleName.includes('heading2') || styleName === '2' || styleName.includes('subtitle')) {
+      blockType = 'h2'
+    } else if (styleName.includes('heading3') || styleName === '3') {
+      blockType = 'h3'
+    } else if (styleName.includes('listparagraph') || styleName.includes('list')) {
+      const numId = p.querySelector('pPr > numPr > numId')
+      if (numId) {
+        const numVal = numId.getAttribute('w:val')
+        blockType = numVal && parseInt(numVal) > 0 ? 'numbered' : 'bullet'
+      } else {
+        blockType = 'bullet'
+      }
+    } else if (styleName.includes('quote')) {
+      blockType = 'quote'
+    }
+
+    const runs = p.getElementsByTagName('w:r')
+    let content = ''
+    for (let j = 0; j < runs.length; j++) {
+      const run = runs[j]
+      const rPr = run.querySelector('rPr')
+      const textNodes = run.getElementsByTagName('w:t')
+      let text = ''
+      for (let k = 0; k < textNodes.length; k++) {
+        text += textNodes[k].textContent || ''
+      }
+      if (!text) continue
+      const isBold = rPr?.querySelector('b') !== null
+      const isItalic = rPr?.querySelector('i') !== null
+      if (isBold && isItalic) content += `<b><i>${text}</i></b>`
+      else if (isBold) content += `<b>${text}</b>`
+      else if (isItalic) content += `<i>${text}</i>`
+      else content += text
+    }
+
+    if (!content.trim() && blockType === 'paragraph') continue
+    blocks.push({ id: generateId(), type: blockType, content: content || '' })
+  }
+
+  if (blocks.length === 0) {
+    blocks.push({ id: generateId(), type: 'paragraph', content: '' })
+  }
+  return blocks
+}
+
+async function readZipEntries(file: File): Promise<{ name: string; data: Uint8Array }[]> {
+  const arrayBuffer = await file.arrayBuffer()
+  const uint8 = new Uint8Array(arrayBuffer)
+  const files: { name: string; data: Uint8Array }[] = []
+  let offset = 0
+
+  while (offset < uint8.length - 4) {
+    if (uint8[offset] === 0x50 && uint8[offset + 1] === 0x4b &&
+        uint8[offset + 2] === 0x03 && uint8[offset + 3] === 0x04) {
+      const nameLen = uint8[offset + 26] | (uint8[offset + 27] << 8)
+      const extraLen = uint8[offset + 28] | (uint8[offset + 29] << 8)
+      const compSize = uint8[offset + 18] | (uint8[offset + 19] << 8) | (uint8[offset + 20] << 16) | (uint8[offset + 21] << 24)
+      const compMethod = uint8[offset + 8] | (uint8[offset + 9] << 8)
+      const nameStart = offset + 30
+      const name = new TextDecoder().decode(uint8.slice(nameStart, nameStart + nameLen))
+      const dataStart = nameStart + nameLen + extraLen
+
+      if (compMethod === 0) {
+        files.push({ name, data: uint8.slice(dataStart, dataStart + compSize) })
+      } else {
+        try {
+          const compressed = uint8.slice(dataStart, dataStart + compSize)
+          const blob = new Blob([compressed])
+          const ds = new DecompressionStream('deflate-raw' as CompressionFormat)
+          const reader = blob.stream().pipeThrough(ds).getReader()
+          const chunks: Uint8Array[] = []
+          let done = false
+          while (!done) {
+            const result = await reader.read()
+            if (result.done) { done = true; break }
+            chunks.push(result.value)
+          }
+          const totalLen = chunks.reduce((s, c) => s + c.length, 0)
+          const decompressed = new Uint8Array(totalLen)
+          let pos = 0
+          for (const chunk of chunks) {
+            decompressed.set(chunk, pos)
+            pos += chunk.length
+          }
+          files.push({ name, data: decompressed })
+        } catch {
+          files.push({ name, data: uint8.slice(dataStart, dataStart + compSize) })
+        }
+      }
+      offset = dataStart + compSize
+    } else {
+      offset++
+    }
+  }
+  return files
+}
+
+function extractPptxSlideText(xmlString: string): { title: string; bodyTexts: string[] } {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(xmlString, 'application/xml')
+  let title = ''
+  const bodyTexts: string[] = []
+
+  // Find all sp (shape) elements
+  const shapes = doc.getElementsByTagName('p:sp')
+  for (let i = 0; i < shapes.length; i++) {
+    const sp = shapes[i]
+    // Check shape type from nvSpPr > nvPr > ph
+    const ph = sp.querySelector('nvSpPr > nvPr > ph')
+    const phType = ph?.getAttribute('type') || ''
+    const isTitle = phType === 'title' || phType === 'ctrTitle'
+
+    // Extract text from txBody > p > r > t
+    const txBody = sp.getElementsByTagName('p:txBody')[0]
+    if (!txBody) continue
+
+    const paragraphs = txBody.getElementsByTagName('a:p')
+    const paraTexts: string[] = []
+    for (let j = 0; j < paragraphs.length; j++) {
+      const runs = paragraphs[j].getElementsByTagName('a:r')
+      let lineText = ''
+      for (let k = 0; k < runs.length; k++) {
+        const tNodes = runs[k].getElementsByTagName('a:t')
+        for (let m = 0; m < tNodes.length; m++) {
+          lineText += tNodes[m].textContent || ''
+        }
+      }
+      if (lineText.trim()) paraTexts.push(lineText.trim())
+    }
+
+    const fullText = paraTexts.join('\n')
+    if (!fullText) continue
+
+    if (isTitle && !title) {
+      title = paraTexts[0] || fullText
+    } else {
+      bodyTexts.push(fullText)
+    }
+  }
+
+  return { title, bodyTexts }
+}
+
+async function readPptxFile(file: File): Promise<{ slides: Slide[]; title: string }> {
+  const entries = await readZipEntries(file)
+
+  // Find slide files: ppt/slides/slide1.xml, slide2.xml, etc.
+  const slideEntries = entries
+    .filter(e => /^ppt\/slides\/slide\d+\.xml$/.test(e.name))
+    .sort((a, b) => {
+      const numA = parseInt(a.name.match(/slide(\d+)/)?.[1] || '0')
+      const numB = parseInt(b.name.match(/slide(\d+)/)?.[1] || '0')
+      return numA - numB
+    })
+
+  if (slideEntries.length === 0) {
+    throw new Error('スライドデータが見つかりませんでした')
+  }
+
+  let docTitle = file.name.replace(/\.pptx$/i, '')
+  const slides: Slide[] = []
+
+  for (let i = 0; i < slideEntries.length; i++) {
+    const xmlString = new TextDecoder().decode(slideEntries[i].data)
+    const { title, bodyTexts } = extractPptxSlideText(xmlString)
+
+    if (i === 0 && title) docTitle = title
+
+    const elements: SlideTextElement[] = []
+
+    // Add title element
+    if (title) {
+      elements.push({
+        id: generateId(),
+        type: 'title',
+        content: title,
+        x: 50,
+        y: 40,
+        w: 860,
+        h: 80,
+        fontSize: 36,
+        fontWeight: '700',
+        align: 'left',
+      })
+    }
+
+    // Add body text element
+    const bodyContent = bodyTexts.join('\n')
+    if (bodyContent) {
+      elements.push({
+        id: generateId(),
+        type: 'body',
+        content: bodyContent,
+        x: 50,
+        y: title ? 140 : 40,
+        w: 860,
+        h: 380,
+        fontSize: 18,
+        fontWeight: '400',
+        align: 'left',
+      })
+    }
+
+    // If no content at all, add an empty body
+    if (elements.length === 0) {
+      elements.push({
+        id: generateId(),
+        type: 'body',
+        content: '',
+        x: 50,
+        y: 40,
+        w: 860,
+        h: 460,
+        fontSize: 18,
+        fontWeight: '400',
+        align: 'left',
+      })
+    }
+
+    slides.push({
+      id: generateId(),
+      themeKey: 'dark-blue',
+      elements,
+    })
+  }
+
+  return { slides, title: docTitle }
+}
+
+async function readDocxFile(file: File): Promise<{ blocks: Block[]; title: string }> {
+  const files = await readZipEntries(file)
+
+  const docFile = files.find(f => f.name === 'word/document.xml')
+  if (!docFile) {
+    const arrayBuffer = await file.arrayBuffer()
+    const text = new TextDecoder().decode(new Uint8Array(arrayBuffer))
+    const blocks = parseDocxXml(text)
+    return { blocks, title: file.name.replace(/\.docx$/i, '') }
+  }
+
+  const xmlString = new TextDecoder().decode(docFile.data)
+  const blocks = parseDocxXml(xmlString)
+  return { blocks, title: file.name.replace(/\.docx$/i, '') }
+}
+
 export default function ImportModal({ open, onClose }: Props) {
   const router = useRouter()
   const [dragOver, setDragOver] = useState(false)
@@ -136,6 +396,44 @@ export default function ImportModal({ open, onClose }: Props) {
 
     try {
       const ext = file.name.split('.').pop()?.toLowerCase() || ''
+
+      if (ext === 'pptx') {
+        // Import PPTX as slides
+        const { slides, title } = await readPptxFile(file)
+        const fileTitle = file.name.replace(/\.pptx$/i, '') || title
+
+        const meta = await createDocument('slides', fileTitle)
+        if (!meta) throw new Error('スライドの作成に失敗しました')
+
+        const slideDoc = await getSlideDoc(meta.id)
+        if (!slideDoc) throw new Error('スライドの読み込みに失敗しました')
+
+        slideDoc.slides = slides
+        slideDoc.activeSlideId = slides[0]?.id || slideDoc.activeSlideId
+        await saveSlideDoc(slideDoc)
+        router.push(`/slides/${meta.id}`)
+        onClose()
+        return
+      }
+
+      if (ext === 'docx') {
+        // Import DOCX as document
+        const { blocks, title } = await readDocxFile(file)
+        const fileTitle = file.name.replace(/\.docx$/i, '') || title
+
+        const meta = await createDocument('doc', fileTitle)
+        if (!meta) throw new Error('ドキュメントの作成に失敗しました')
+
+        const doc = await getDocDoc(meta.id)
+        if (!doc) throw new Error('ドキュメントの読み込みに失敗しました')
+
+        doc.blocks = blocks
+        await saveDocDoc(doc)
+        router.push(`/docs/${meta.id}`)
+        onClose()
+        return
+      }
+
       const text = await file.text()
 
       if (ext === 'md' || ext === 'txt' || ext === 'text') {
@@ -192,7 +490,7 @@ export default function ImportModal({ open, onClose }: Props) {
         router.push(`/docs/${meta.id}`)
         onClose()
       } else {
-        setError(`未対応のファイル形式です: .${ext}\n対応形式: .md .txt .csv .tsv .html`)
+        setError(`未対応のファイル形式です: .${ext}\n対応形式: .md .txt .csv .tsv .html .docx .pptx`)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'インポートに失敗しました')
@@ -242,7 +540,7 @@ export default function ImportModal({ open, onClose }: Props) {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".md,.txt,.text,.csv,.tsv,.html,.htm"
+            accept=".md,.txt,.text,.csv,.tsv,.html,.htm,.docx,.pptx"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0]
@@ -266,6 +564,8 @@ export default function ImportModal({ open, onClose }: Props) {
             <FormatTag icon={<FileSpreadsheet size={11} />} label=".csv" desc="CSVスプレッドシート" />
             <FormatTag icon={<FileSpreadsheet size={11} />} label=".tsv" desc="TSVスプレッドシート" />
             <FormatTag icon={<FileText size={11} />} label=".html" desc="HTMLファイル" />
+            <FormatTag icon={<FileText size={11} />} label=".docx" desc="Word文書" />
+            <FormatTag icon={<Presentation size={11} />} label=".pptx" desc="PowerPointスライド" />
           </div>
         </div>
       </div>

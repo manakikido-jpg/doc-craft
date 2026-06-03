@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import { FileText, Mail, Lock, LogIn } from 'lucide-react'
+import { FileText, Mail, Lock, LogIn, ArrowRight } from 'lucide-react'
 
 function GitHubIcon({ size = 18 }: { size?: number }) {
   return (
@@ -31,15 +31,23 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
+  function getSupabase() {
+    if (!supabaseRef.current) supabaseRef.current = createClient()
+    return supabaseRef.current
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error } = await getSupabase().auth.signInWithPassword({ email, password })
     if (error) {
-      setError(error.message === 'Invalid login credentials' ? 'メールアドレスまたはパスワードが正しくありません' : error.message)
+      if (error.message === 'Supabase未接続') {
+        setError('現在メール認証は利用できません。ダッシュボードへ直接お進みください。')
+      } else {
+        setError(error.message === 'Invalid login credentials' ? 'メールアドレスまたはパスワードが正しくありません' : error.message)
+      }
       setLoading(false)
     } else {
       router.push('/dashboard')
@@ -49,20 +57,32 @@ export default function LoginPage() {
 
   async function handleGitHubLogin() {
     setError('')
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await getSupabase().auth.signInWithOAuth({
       provider: 'github',
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     })
-    if (error) setError(error.message)
+    if (error) {
+      if (error.message === 'Supabase未接続') {
+        setError('現在GitHub認証は利用できません。ダッシュボードへ直接お進みください。')
+      } else {
+        setError(error.message)
+      }
+    }
   }
 
   async function handleGoogleLogin() {
     setError('')
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await getSupabase().auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     })
-    if (error) setError(error.message)
+    if (error) {
+      if (error.message === 'Supabase未接続') {
+        setError('現在Google認証は利用できません。ダッシュボードへ直接お進みください。')
+      } else {
+        setError(error.message)
+      }
+    }
   }
 
   return (
@@ -105,6 +125,15 @@ export default function LoginPage() {
             <GitHubIcon />
             GitHubでログイン
           </button>
+
+          {/* ダッシュボードへ直接進む */}
+          <Link
+            href="/dashboard"
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-xl text-white text-sm font-medium transition-all duration-200 mb-3 hover:-translate-y-0.5 shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30"
+          >
+            <ArrowRight size={16} />
+            ログインせずに始める
+          </Link>
 
           {/* Divider */}
           <div className="flex items-center gap-4 mb-6">

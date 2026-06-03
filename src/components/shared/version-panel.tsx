@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { History, RotateCcw, X, Eye, ChevronLeft } from 'lucide-react'
 import type { VersionSnapshot } from '@/types'
+import { useToast } from '@/components/shared/toast'
 
 interface Props {
   versions: VersionSnapshot[]
@@ -47,11 +48,12 @@ function extractText(data: string): string {
         .filter(Boolean)
         .join('\n')
     }
-  } catch {}
+  } catch (e) { console.warn('Failed to extract version preview text:', e) }
   return data
 }
 
 export default function VersionPanel({ versions, onRestore, onClose, currentData }: Props) {
+  const { confirm } = useToast()
   const [diffView, setDiffView] = useState<string | null>(null)
 
   function formatTime(iso: string) {
@@ -169,8 +171,8 @@ export default function VersionPanel({ versions, onRestore, onClose, currentData
                     </button>
                   )}
                   <button
-                    onClick={() => {
-                      if (window.confirm('このバージョンに復元しますか？現在の変更は失われます。')) {
+                    onClick={async () => {
+                      if (await confirm('このバージョンに復元しますか？現在の変更は失われます。')) {
                         onRestore(ver.id)
                         onClose()
                       }

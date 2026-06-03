@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   Copy,
+  Clipboard,
+  ClipboardPaste,
+  Scissors,
   ArrowUp,
   ArrowDown,
   Trash2,
@@ -17,6 +20,7 @@ import {
   AlignRight,
   AlignJustify,
   Palette,
+  Table,
 } from 'lucide-react'
 import type { Block } from '@/types'
 
@@ -34,8 +38,11 @@ interface Props {
   onSetBgColor: (id: string, color: string) => void
   onSetColumns: (id: string, columns: 1 | 2 | 3) => void
   onSetLineSpacing?: (id: string, spacing: number) => void
-  onSetParagraphSpacing?: (id: string, spacing: 'compact' | 'normal' | 'wide') => void
+  onSetParagraphSpacing?: (id: string, spacing: 'compact' | 'normal' | 'wide' | 'extra-wide') => void
   onSetAlign?: (id: string, align: 'left' | 'center' | 'right' | 'justify') => void
+  onSetTextIndent?: (id: string, indent: number) => void
+  onUpdateData?: (id: string, data: Record<string, string>) => void
+  onConvertToTable?: (id: string) => void
 }
 
 const BORDER_OPTIONS = [
@@ -65,9 +72,10 @@ const LINE_SPACING_OPTIONS = [
 ]
 
 const PARAGRAPH_SPACING_OPTIONS = [
-  { value: 'compact' as const, label: 'コンパクト' },
-  { value: 'normal' as const, label: '標準' },
-  { value: 'wide' as const, label: '広い' },
+  { value: 'compact' as const, label: 'なし (0pt)' },
+  { value: 'normal' as const, label: '標準 (8pt)' },
+  { value: 'wide' as const, label: '広い (16pt)' },
+  { value: 'extra-wide' as const, label: '特大 (24pt)' },
 ]
 
 const TEXT_COLOR_OPTIONS = [
@@ -99,9 +107,13 @@ export default function BlockContextMenu({
   onSetLineSpacing,
   onSetParagraphSpacing,
   onSetAlign,
+  onSetTextIndent,
+  onUpdateData,
+  onConvertToTable,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [submenu, setSubmenu] = useState<string | null>(null)
+  const [adjustedPosition, setAdjustedPosition] = useState<{ top: number; left: number }>({ top: position.y, left: position.x })
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -118,18 +130,36 @@ export default function BlockContextMenu({
     }
   }, [onClose])
 
+  // Adjust position after mount using actual menu dimensions
+  useEffect(() => {
+    if (!ref.current) return
+    const rect = ref.current.getBoundingClientRect()
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    let top = position.y
+    let left = position.x
+
+    if (left + rect.width > vw) {
+      left = Math.max(0, vw - rect.width - 8)
+    }
+    if (top + rect.height > vh) {
+      top = Math.max(0, vh - rect.height - 8)
+    }
+
+    if (top !== adjustedPosition.top || left !== adjustedPosition.left) {
+      setAdjustedPosition({ top, left })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position.x, position.y])
+
   const isTextBlock = ['paragraph', 'h1', 'h2', 'h3', 'bullet', 'numbered', 'quote'].includes(block.type)
 
   const menuStyle: React.CSSProperties = {
     position: 'fixed',
-    top: position.y,
-    left: position.x,
+    top: adjustedPosition.top,
+    left: adjustedPosition.left,
     zIndex: 100,
   }
-
-  // Adjust if menu would go off screen
-  if (position.x + 200 > window.innerWidth) menuStyle.left = position.x - 200
-  if (position.y + 300 > window.innerHeight) menuStyle.top = position.y - 200
 
   return (
     <div
@@ -137,6 +167,41 @@ export default function BlockContextMenu({
       className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1.5 w-52 text-sm animate-scale-in"
       style={menuStyle}
     >
+      {/* Copy / Cut / Paste */}
+      <button
+        onClick={() => {
+          document.execCommand('copy')
+          onClose()
+        }}
+        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+      >
+        <Clipboard size={13} /> コピー
+        <span className="ml-auto text-[10px] text-slate-600">Ctrl+C</span>
+      </button>
+      <button
+        onClick={() => {
+          document.execCommand('cut')
+          onClose()
+        }}
+        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+      >
+        <Scissors size={13} /> 切り取り
+        <span className="ml-auto text-[10px] text-slate-600">Ctrl+X</span>
+      </button>
+      <button
+        onClick={() => {
+          navigator.clipboard.readText().then((text) => {
+            document.execCommand('insertText', false, text)
+          }).catch(() => {})
+          onClose()
+        }}
+        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+      >
+        <ClipboardPaste size={13} /> 書式なし貼り付け
+        <span className="ml-auto text-[10px] text-slate-600">Ctrl+Shift+V</span>
+      </button>
+      <div className="h-px bg-slate-800 my-1" />
+
       {/* Duplicate */}
       <button
         onClick={() => {
@@ -306,6 +371,38 @@ export default function BlockContextMenu({
         </button>
       )}
 
+      {/* Text indent */}
+      {isTextBlock && onSetTextIndent && (
+        <div className="relative" onMouseEnter={() => setSubmenu('indent')} onMouseLeave={() => setSubmenu(null)}>
+          <button className="w-full flex items-center justify-between gap-2.5 px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
+            <span className="flex items-center gap-2.5">
+              <Type size={13} /> 字下げ
+            </span>
+            <span className="text-slate-600">▸</span>
+          </button>
+          {submenu === 'indent' && (
+            <div className="absolute left-full top-0 ml-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 w-28 z-50">
+              {[
+                { value: 0, label: 'なし' },
+                { value: 1, label: '1字' },
+                { value: 2, label: '2字' },
+                { value: 3, label: '3字' },
+                { value: -1, label: '吊り 1字' },
+                { value: -2, label: '吊り 2字' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => { onSetTextIndent(block.id, opt.value); onClose() }}
+                  className={`w-full text-left px-3 py-1 text-xs transition-colors ${(block.textIndent || 0) === opt.value ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-300 hover:bg-slate-800'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Line spacing */}
       {isTextBlock && onSetLineSpacing && (
         <div className="relative" onMouseEnter={() => setSubmenu('line')} onMouseLeave={() => setSubmenu(null)}>
@@ -388,6 +485,74 @@ export default function BlockContextMenu({
             </div>
           )}
         </div>
+      )}
+
+      {/* Paragraph break control (#36) */}
+      {isTextBlock && onUpdateData && (
+        <div className="relative" onMouseEnter={() => setSubmenu('pagebreak')} onMouseLeave={() => setSubmenu(null)}>
+          <button className="w-full flex items-center justify-between gap-2.5 px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
+            <span className="flex items-center gap-2.5">
+              <Type size={13} /> 段落制御
+            </span>
+            <span className="text-slate-600">&#x25B8;</span>
+          </button>
+          {submenu === 'pagebreak' && (
+            <div className="absolute left-full top-0 ml-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 w-52 z-50">
+              <button
+                onClick={() => {
+                  onUpdateData(block.id, { pageBreakBefore: block.data?.pageBreakBefore === 'true' ? 'false' : 'true' })
+                  onClose()
+                }}
+                className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${block.data?.pageBreakBefore === 'true' ? 'text-indigo-400' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
+              >
+                段落前で改ページ {block.data?.pageBreakBefore === 'true' ? '✓' : ''}
+              </button>
+              <button
+                onClick={() => {
+                  onUpdateData(block.id, { keepWithNext: block.data?.keepWithNext === 'true' ? 'false' : 'true' })
+                  onClose()
+                }}
+                className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${block.data?.keepWithNext === 'true' ? 'text-indigo-400' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
+              >
+                次の段落と分離しない {block.data?.keepWithNext === 'true' ? '✓' : ''}
+              </button>
+              <button
+                onClick={() => {
+                  onUpdateData(block.id, { keepTogether: block.data?.keepTogether === 'true' ? 'false' : 'true' })
+                  onClose()
+                }}
+                className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${block.data?.keepTogether === 'true' ? 'text-indigo-400' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
+              >
+                段落内で改ページしない {block.data?.keepTogether === 'true' ? '✓' : ''}
+              </button>
+              <button
+                onClick={() => {
+                  onUpdateData(block.id, { widowOrphan: block.data?.widowOrphan === 'true' ? 'false' : 'true' })
+                  onClose()
+                }}
+                className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${block.data?.widowOrphan === 'true' ? 'text-indigo-400' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
+              >
+                改ページ/改段前の空白行制御 {block.data?.widowOrphan === 'true' ? '✓' : ''}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Text to table conversion */}
+      {block.type === 'paragraph' && block.content && onConvertToTable && (
+        <>
+          <div className="h-px bg-slate-800 my-1" />
+          <button
+            onClick={() => {
+              onConvertToTable(block.id)
+              onClose()
+            }}
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+          >
+            <Table size={13} /> テキスト→テーブル変換
+          </button>
+        </>
       )}
 
       <div className="h-px bg-slate-800 my-1" />

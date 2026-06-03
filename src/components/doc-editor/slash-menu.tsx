@@ -24,6 +24,9 @@ const BLOCK_OPTIONS: { type: BlockType; label: string; desc: string; icon: React
   { type: 'h1', label: '見出し 1', desc: 'H1 大見出し', icon: 'H1' },
   { type: 'h2', label: '見出し 2', desc: 'H2 中見出し', icon: 'H2' },
   { type: 'h3', label: '見出し 3', desc: 'H3 小見出し', icon: 'H3' },
+  { type: 'h4', label: '見出し 4', desc: 'H4 見出し', icon: 'H4' },
+  { type: 'h5', label: '見出し 5', desc: 'H5 見出し', icon: 'H5' },
+  { type: 'h6', label: '見出し 6', desc: 'H6 見出し', icon: 'H6' },
   { type: 'paragraph', label: '段落', desc: '通常のテキスト', icon: '¶' },
   { type: 'bullet', label: '箇条書き', desc: '箇条書きリスト', icon: '•' },
   { type: 'numbered', label: '番号付きリスト', desc: '番号付きリスト', icon: '1.' },
@@ -44,6 +47,8 @@ const BLOCK_OPTIONS: { type: BlockType; label: string; desc: string; icon: React
   { type: 'columns', label: '段組み', desc: '2段・3段レイアウト', icon: <Columns2 size={14} /> },
   { type: 'signature', label: '署名欄', desc: '署名・捺印用', icon: <PenTool size={14} /> },
   { type: 'cover-page', label: '表紙', desc: 'テンプレート表紙', icon: <BookOpen size={14} /> },
+  { type: 'section-break', label: 'セクション区切り', icon: <span className="text-base">§</span>, desc: 'セクションを分離' },
+  { type: 'column-break', label: '段区切り', icon: <span className="text-base">&#x23CE;</span>, desc: '段の区切りを挿入' },
 ]
 
 interface Props {

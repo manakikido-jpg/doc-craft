@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Plus, Bookmark, Trash2, ExternalLink } from 'lucide-react'
+import { X, Plus, Bookmark, Trash2, ExternalLink, Link } from 'lucide-react'
 import type { Bookmark as BookmarkType, Block } from '@/types'
+import { useToast } from '@/components/shared/toast'
 
 interface Props {
   bookmarks: BookmarkType[]
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export default function BookmarkPanel({ bookmarks, blocks, focusedBlockId, onAdd, onDelete, onClose }: Props) {
+  const { addToast } = useToast()
   const [newName, setNewName] = useState('')
 
   function handleAdd() {
@@ -22,7 +24,7 @@ export default function BookmarkPanel({ bookmarks, blocks, focusedBlockId, onAdd
     const blockId = focusedBlockId || blocks[0]?.id
     if (!blockId) return
     if (bookmarks.some((b) => b.name === name)) {
-      alert('同じ名前のブックマークが既に存在します。')
+      addToast('同じ名前のブックマークが既に存在します。', 'warning')
       return
     }
     onAdd(name, blockId)
@@ -96,6 +98,18 @@ export default function BookmarkPanel({ bookmarks, blocks, focusedBlockId, onAdd
                   <div className="text-xs text-white truncate">{bm.name}</div>
                   <div className="text-[10px] text-slate-500 truncate">{getBlockPreview(bm.blockId)}</div>
                 </div>
+                <button
+                  onClick={() => {
+                    // Insert an internal link at cursor position
+                    const linkHtml = `<a href="#bookmark-${bm.id}" data-bookmark-id="${bm.blockId}" class="text-indigo-400 underline cursor-pointer" onclick="(function(e){e.preventDefault();var el=document.querySelector('[data-block-id=&quot;${bm.blockId}&quot;]');if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('ring-2','ring-indigo-500/50');setTimeout(function(){el.classList.remove('ring-2','ring-indigo-500/50')},1500)}})(event)">${bm.name}</a>`
+                    document.execCommand('insertHTML', false, linkHtml + '&nbsp;')
+                    addToast(`ブックマーク「${bm.name}」へのリンクを挿入しました`, 'success')
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-500 hover:text-cyan-400 transition-all"
+                  title="リンクを挿入"
+                >
+                  <Link size={10} />
+                </button>
                 <button
                   onClick={() => handleJump(bm.blockId)}
                   className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-500 hover:text-indigo-400 transition-all"

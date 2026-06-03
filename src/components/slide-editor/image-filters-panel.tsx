@@ -1,15 +1,16 @@
 'use client'
 
 import type { SlideImageElement } from '@/types'
-import { X } from 'lucide-react'
+import { X, Crop } from 'lucide-react'
 
 interface Props {
   element: SlideImageElement
   onUpdate: (props: Partial<SlideImageElement>) => void
   onClose: () => void
+  onCrop?: () => void
 }
 
-export default function ImageFiltersPanel({ element, onUpdate, onClose }: Props) {
+export default function ImageFiltersPanel({ element, onUpdate, onClose, onCrop }: Props) {
   return (
     <div className="absolute right-0 top-0 w-60 h-full bg-slate-900 border-l border-slate-700 z-40 overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
@@ -20,6 +21,16 @@ export default function ImageFiltersPanel({ element, onUpdate, onClose }: Props)
       </div>
 
       <div className="p-4 space-y-4">
+        {onCrop && (
+          <button
+            onClick={onCrop}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 text-xs hover:border-indigo-500 hover:text-white transition-colors"
+          >
+            <Crop size={14} />
+            クロップ
+          </button>
+        )}
+
         <div>
           <label className="text-xs text-slate-400 flex items-center justify-between mb-1">
             <span>明るさ</span>

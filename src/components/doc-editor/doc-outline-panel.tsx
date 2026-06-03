@@ -9,7 +9,7 @@ interface Props {
 }
 
 export default function DocOutlinePanel({ blocks, onClose }: Props) {
-  const headings = blocks.filter((b) => b.type === 'h1' || b.type === 'h2' || b.type === 'h3')
+  const headings = blocks.filter((b) => b.type === 'h1' || b.type === 'h2' || b.type === 'h3' || b.type === 'h4' || b.type === 'h5' || b.type === 'h6')
   const footnotes = blocks.filter((b) => b.type === 'footnote')
   const images = blocks.filter((b) => b.type === 'image' && b.data?.src)
   const tables = blocks.filter((b) => b.type === 'table')
@@ -47,7 +47,13 @@ export default function DocOutlinePanel({ blocks, onClose }: Props) {
                     ? 'text-white font-medium'
                     : h.type === 'h2'
                       ? 'text-slate-300 pl-3'
-                      : 'text-slate-400 pl-6'
+                      : h.type === 'h3'
+                        ? 'text-slate-400 pl-6'
+                        : h.type === 'h4'
+                          ? 'text-slate-400 pl-9'
+                          : h.type === 'h5'
+                            ? 'text-slate-500 pl-12'
+                            : 'text-slate-500 pl-[3.75rem]'
                 }`}
               >
                 <ChevronRight size={10} className="flex-shrink-0 text-slate-600" />

@@ -37,17 +37,22 @@ import {
   Sun,
   Moon,
   Type,
+  Clock,
+  Wand2,
 } from 'lucide-react'
+import type { SlideAction } from '@/hooks/use-slides'
+import type { UndoableAction } from '@/lib/undoable'
 import ThemePicker from './theme-picker'
 import TemplatePicker from './template-picker'
 import ThemeCustomizer from './theme-customizer'
 import { fileToDataURL, isStorageNearLimit } from '@/lib/image-utils'
 import { t } from '@/lib/i18n'
+import { useToast } from '@/components/shared/toast'
 import { useTheme } from '@/lib/theme-context'
 
 interface Props {
   state: SlidesDocument
-  dispatch: React.Dispatch<any>
+  dispatch: React.Dispatch<UndoableAction<SlideAction>>
   onExport: () => void
   onExportPDF?: () => void
   onExportPPTX?: () => void
@@ -64,12 +69,14 @@ interface Props {
   onShortcuts?: () => void
   onShare?: () => void
   onVersions?: () => void
+  onVersionHistory?: () => void
   onAutoLayout?: () => void
   onSorterView?: () => void
   onSlideLayout?: () => void
   onAnimationPanel?: () => void
   onFooterSettings?: () => void
   onPdfImport?: () => void
+  onAiDesign?: () => void
 }
 
 const SHAPE_CATEGORIES = [
@@ -137,13 +144,16 @@ export default function SlideToolbar({
   onShortcuts,
   onShare,
   onVersions,
+  onVersionHistory,
   onAutoLayout,
   onSorterView,
   onSlideLayout,
   onAnimationPanel,
   onFooterSettings,
   onPdfImport,
+  onAiDesign,
 }: Props) {
+  const { addToast } = useToast()
   const activeSlide = state.slides.find((s) => s.id === state.activeSlideId)
   const [shapeMenu, setShapeMenu] = useState(false)
   const [transMenu, setTransMenu] = useState(false)
@@ -160,7 +170,7 @@ export default function SlideToolbar({
   async function handleImageFile(file: File) {
     if (!file.type.startsWith('image/') || !activeSlide) return
     if (isStorageNearLimit()) {
-      alert('ストレージ不足')
+      addToast('ストレージの容量が不足しています。', 'warning')
       return
     }
     const src = await fileToDataURL(file)
@@ -250,7 +260,7 @@ export default function SlideToolbar({
               <button
                 onClick={() => setTextMenu(!textMenu)}
                 className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors"
-                title="テキストボックスを挿入"
+                title="テキストボックスを挿入 (T)"
                 aria-label="テキストボックスを挿入"
                 aria-expanded={textMenu}
               >
@@ -287,7 +297,7 @@ export default function SlideToolbar({
             <button
               onClick={() => fileRef.current?.click()}
               className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors"
-              title="画像を挿入"
+              title="画像を挿入 (I)"
               aria-label="画像を挿入"
             >
               <ImageIcon size={14} />
@@ -307,7 +317,7 @@ export default function SlideToolbar({
               <button
                 onClick={() => setShapeMenu(!shapeMenu)}
                 className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors"
-                title="図形を挿入"
+                title="図形を挿入 (S)"
                 aria-label="図形を挿入"
                 aria-expanded={shapeMenu}
               >
@@ -398,7 +408,7 @@ export default function SlideToolbar({
                 const file = e.target.files?.[0]
                 if (!file || !activeSlide) return
                 if (isStorageNearLimit()) {
-                  alert('ストレージ不足')
+                  addToast('ストレージの容量が不足しています。', 'warning')
                   return
                 }
                 const src = await fileToDataURL(file)
@@ -637,6 +647,17 @@ export default function SlideToolbar({
           </button>
         )}
 
+        {onAiDesign && (
+          <button
+            onClick={onAiDesign}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-violet-500 bg-slate-800 text-slate-400 hover:text-violet-400 transition-colors"
+            title="AIデザイン改善"
+            aria-label="AIデザイン改善"
+          >
+            <Wand2 size={14} />
+          </button>
+        )}
+
         {onVersions && (
           <>
             <button
@@ -656,6 +677,17 @@ export default function SlideToolbar({
               <History size={14} />
             </button>
           </>
+        )}
+
+        {onVersionHistory && (
+          <button
+            onClick={onVersionHistory}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-white transition-colors max-lg:hidden"
+            title="自動バージョン履歴"
+            aria-label="自動バージョン履歴"
+          >
+            <Clock size={14} />
+          </button>
         )}
 
         {onShare && (

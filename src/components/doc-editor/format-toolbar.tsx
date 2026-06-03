@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, useCallback } from 'react'
 import {
   Link,
   Highlighter,
@@ -76,81 +76,47 @@ const UNDERLINE_STYLES = [
 const LINE_HEIGHTS = [
   { label: '1.0', value: '1.0' },
   { label: '1.15', value: '1.15' },
+  { label: '1.25', value: '1.25' },
   { label: '1.5', value: '1.5' },
+  { label: '1.75', value: '1.75' },
   { label: '2.0', value: '2.0' },
   { label: '2.5', value: '2.5' },
   { label: '3.0', value: '3.0' },
 ]
 
-const ENCLOSED_CHARS = [
-  '①',
-  '②',
-  '③',
-  '④',
-  '⑤',
-  '⑥',
-  '⑦',
-  '⑧',
-  '⑨',
-  '⑩',
-  '⑪',
-  '⑫',
-  '⑬',
-  '⑭',
-  '⑮',
-  '⑯',
-  '⑰',
-  '⑱',
-  '⑲',
-  '⑳',
-  'Ⓐ',
-  'Ⓑ',
-  'Ⓒ',
-  'Ⓓ',
-  'Ⓔ',
-  'Ⓕ',
-  '㋐',
-  '㋑',
-  '㋒',
-  '㋓',
-  '㋔',
-  '㊀',
-  '㊁',
-  '㊂',
-  '㊃',
-  '㊄',
+const LETTER_SPACINGS = [
+  { label: '極狭', value: '-1px' },
+  { label: '狭い', value: '-0.5px' },
+  { label: '標準', value: '0px' },
+  { label: '広い', value: '0.5px' },
+  { label: 'やや広い', value: '1px' },
+  { label: '広め', value: '2px' },
+  { label: '最広', value: '3px' },
 ]
 
-export default function FormatToolbar({ containerRef, showFormattingMarks, onToggleFormattingMarks }: Props) {
-  const [show, setShow] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
+const ENCLOSED_CHARS = [
+  '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩',
+  '⑪', '⑫', '⑬', '⑭', '⑮', '⑯', '⑰', '⑱', '⑲', '⑳',
+  'Ⓐ', 'Ⓑ', 'Ⓒ', 'Ⓓ', 'Ⓔ', 'Ⓕ',
+  '㋐', '㋑', '㋒', '㋓', '㋔',
+  '㊀', '㊁', '㊂', '㊃', '㊄',
+]
+
+function FormatToolbar({ containerRef, showFormattingMarks, onToggleFormattingMarks }: Props) {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
 
+  // Close dropdown when clicking outside
   useEffect(() => {
-    function handleSelectionChange() {
-      const sel = window.getSelection()
-      if (!sel || sel.isCollapsed || !sel.rangeCount) {
-        setShow(false)
-        return
+    if (!activeDropdown) return
+    function handleClick(e: MouseEvent) {
+      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
+        setActiveDropdown(null)
       }
-      const range = sel.getRangeAt(0)
-      if (!containerRef.current?.contains(range.commonAncestorContainer)) {
-        setShow(false)
-        return
-      }
-      const text = sel.toString().trim()
-      if (!text) {
-        setShow(false)
-        return
-      }
-      const rect = range.getBoundingClientRect()
-      setPos({ top: rect.top + window.scrollY - 44, left: rect.left + rect.width / 2 })
-      setShow(true)
     }
-    document.addEventListener('selectionchange', handleSelectionChange)
-    return () => document.removeEventListener('selectionchange', handleSelectionChange)
-  }, [containerRef])
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [activeDropdown])
 
   function exec(command: string, value?: string) {
     document.execCommand(command, false, value)
@@ -183,7 +149,6 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
     const sel = window.getSelection()
     if (!sel || sel.isCollapsed || !sel.rangeCount) return
     const range = sel.getRangeAt(0)
-    // Check if already bordered
     const parent = range.commonAncestorContainer.parentElement
     if (parent?.style.border) {
       parent.style.border = ''
@@ -201,12 +166,11 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
   }
 
   function handleGrowFont() {
-    // Use fontSize command to increase
-    exec('fontSize', '5') // medium-large
+    exec('fontSize', '5')
   }
 
   function handleShrinkFont() {
-    exec('fontSize', '2') // small
+    exec('fontSize', '2')
   }
 
   function handleLineHeight(value: string) {
@@ -215,12 +179,36 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
     const range = sel.getRangeAt(0)
     let block = range.commonAncestorContainer as HTMLElement
     if (block.nodeType === Node.TEXT_NODE) block = block.parentElement!
-    // Walk up to contentEditable block
     while (block && !block.hasAttribute('contenteditable') && block.parentElement) {
       block = block.parentElement
     }
     if (block?.hasAttribute('contenteditable')) {
       block.style.lineHeight = value
+    }
+  }
+
+  function handleLetterSpacing(value: string) {
+    const sel = window.getSelection()
+    if (!sel || !sel.rangeCount) return
+    if (sel.isCollapsed) {
+      // Apply to entire block
+      const range = sel.getRangeAt(0)
+      let block = range.commonAncestorContainer as HTMLElement
+      if (block.nodeType === Node.TEXT_NODE) block = block.parentElement!
+      while (block && !block.hasAttribute('contenteditable') && block.parentElement) {
+        block = block.parentElement
+      }
+      if (block?.hasAttribute('contenteditable')) {
+        block.style.letterSpacing = value === '0px' ? '' : value
+      }
+    } else {
+      // Apply to selection via span
+      const range = sel.getRangeAt(0)
+      const content = range.extractContents()
+      const span = document.createElement('span')
+      span.style.letterSpacing = value === '0px' ? '' : value
+      span.appendChild(content)
+      range.insertNode(span)
     }
   }
 
@@ -253,8 +241,6 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
     setActiveDropdown(activeDropdown === name ? null : name)
   }
 
-  if (!show) return null
-
   const btnClass = (cmd?: string, active?: boolean) =>
     `w-7 h-7 flex items-center justify-center rounded text-xs transition-colors ${
       (cmd && isActive(cmd)) || active
@@ -265,8 +251,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
   return (
     <div
       ref={toolbarRef}
-      className="fixed z-50 flex items-center gap-0.5 px-1.5 py-1 bg-slate-800 border border-slate-600 rounded-lg shadow-xl flex-wrap max-w-[600px]"
-      style={{ top: pos.top, left: pos.left, transform: 'translateX(-50%)' }}
+      className="sticky top-0 z-30 flex items-center gap-0.5 px-3 py-1 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800 flex-wrap"
       onMouseDown={(e) => e.preventDefault()}
     >
       {/* ===== フォント / Font family ===== */}
@@ -275,7 +260,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
           <span className="text-[10px] font-bold">F</span>
         </button>
         {activeDropdown === 'fontFamily' && (
-          <div className="absolute bottom-full mb-1 left-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 w-40 z-50">
+          <div className="absolute top-full mt-1 left-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 w-40 z-50">
             {FONT_FAMILIES.map((f) => (
               <button
                 key={f.label}
@@ -300,7 +285,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
           <span className="text-[10px]">A↕</span>
         </button>
         {activeDropdown === 'fontSize' && (
-          <div className="absolute bottom-full mb-1 left-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 w-16 max-h-48 overflow-y-auto z-50">
+          <div className="absolute top-full mt-1 left-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 w-16 max-h-48 overflow-y-auto z-50">
             {FONT_SIZES.map((s) => (
               <button
                 key={s}
@@ -326,7 +311,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
         <AArrowDown size={14} />
       </button>
 
-      <div className="w-px h-4 bg-slate-600 mx-0.5" />
+      <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
       {/* ===== 太字・斜体・下線・取り消し線 ===== */}
       <button className={btnClass('bold')} onClick={() => exec('bold')} title="太字 (Ctrl+B)">
@@ -349,7 +334,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
           ▾
         </button>
         {activeDropdown === 'underline' && (
-          <div className="absolute bottom-full mb-1 left-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 w-28 z-50">
+          <div className="absolute top-full mt-1 left-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 w-28 z-50">
             {UNDERLINE_STYLES.map((u) => (
               <button
                 key={u.value}
@@ -370,7 +355,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
         <span className="line-through">S</span>
       </button>
 
-      <div className="w-px h-4 bg-slate-600 mx-0.5" />
+      <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
       {/* ===== ルビ/ふりがな / Ruby ===== */}
       <button className={btnClass()} onClick={handleRuby} title="ルビ/ふりがな">
@@ -391,7 +376,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
           <span className="text-[11px]">①</span>
         </button>
         {activeDropdown === 'enclosed' && (
-          <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 rounded-lg shadow-xl p-2 z-50">
+          <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 rounded-lg shadow-xl p-2 z-50">
             <div className="flex flex-wrap gap-0.5 w-[180px]">
               {ENCLOSED_CHARS.map((c) => (
                 <button
@@ -410,7 +395,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
         )}
       </div>
 
-      <div className="w-px h-4 bg-slate-600 mx-0.5" />
+      <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
       {/* ===== 上付き・下付き / Superscript / Subscript ===== */}
       <button className={btnClass('superscript')} onClick={() => exec('superscript')} title="上付き">
@@ -420,7 +405,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
         <Subscript size={14} />
       </button>
 
-      <div className="w-px h-4 bg-slate-600 mx-0.5" />
+      <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
       {/* ===== フォントの色 / Text color ===== */}
       <div className="relative">
@@ -430,7 +415,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
           </span>
         </button>
         {activeDropdown === 'textColor' && (
-          <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 rounded-lg shadow-xl p-2 z-50">
+          <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 rounded-lg shadow-xl p-2 z-50">
             <div className="flex flex-wrap gap-1 w-[130px]">
               {TEXT_COLORS.map((c) => (
                 <button
@@ -466,7 +451,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
           <Highlighter size={14} />
         </button>
         {activeDropdown === 'highlight' && (
-          <div className="absolute bottom-full mb-1 left-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl p-2 z-50">
+          <div className="absolute top-full mt-1 left-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl p-2 z-50">
             <div className="flex flex-wrap gap-1 w-[100px]">
               {HIGHLIGHT_COLORS.map((c) => (
                 <button
@@ -491,7 +476,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
         <Link size={14} />
       </button>
 
-      <div className="w-px h-4 bg-slate-600 mx-0.5" />
+      <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
       {/* ===== 左揃え・中央揃え・右揃え・均等割り付け ===== */}
       <button className={btnClass()} onClick={() => exec('justifyLeft')} title="左揃え">
@@ -507,7 +492,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
         <AlignJustify size={14} />
       </button>
 
-      <div className="w-px h-4 bg-slate-600 mx-0.5" />
+      <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
       {/* ===== 段落番号・箇条書き ===== */}
       <button className={btnClass('insertUnorderedList')} onClick={() => exec('insertUnorderedList')} title="箇条書き">
@@ -517,7 +502,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
         <ListOrdered size={14} />
       </button>
 
-      <div className="w-px h-4 bg-slate-600 mx-0.5" />
+      <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
       {/* ===== 行間 / Line spacing ===== */}
       <div className="relative">
@@ -525,7 +510,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
           <Space size={14} />
         </button>
         {activeDropdown === 'lineHeight' && (
-          <div className="absolute bottom-full mb-1 left-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 w-20 z-50">
+          <div className="absolute top-full mt-1 left-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 w-20 z-50">
             {LINE_HEIGHTS.map((lh) => (
               <button
                 key={lh.value}
@@ -543,6 +528,30 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
         )}
       </div>
 
+      {/* ===== 文字間隔 / Letter spacing ===== */}
+      <div className="relative">
+        <button className={btnClass()} onClick={() => toggleDropdown('letterSpacing')} title="文字間隔">
+          <span className="text-[10px] font-bold">AV</span>
+        </button>
+        {activeDropdown === 'letterSpacing' && (
+          <div className="absolute top-full mt-1 left-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 w-24 z-50">
+            {LETTER_SPACINGS.map((ls) => (
+              <button
+                key={ls.value}
+                className="w-full text-left px-3 py-1 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  handleLetterSpacing(ls.value)
+                  setActiveDropdown(null)
+                }}
+              >
+                {ls.label} ({ls.value})
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ===== インデント / Indent ===== */}
       <button className={btnClass()} onClick={() => exec('indent')} title="インデント">
         <span className="text-[10px]">→⌐</span>
@@ -551,7 +560,7 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
         <span className="text-[10px]">←⌐</span>
       </button>
 
-      <div className="w-px h-4 bg-slate-600 mx-0.5" />
+      <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
       {/* ===== 編集記号の表示 / Show formatting marks ===== */}
       {onToggleFormattingMarks && (
@@ -571,3 +580,5 @@ export default function FormatToolbar({ containerRef, showFormattingMarks, onTog
     </div>
   )
 }
+
+export default memo(FormatToolbar)

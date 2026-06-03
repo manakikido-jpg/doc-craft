@@ -169,7 +169,7 @@ export default function TextboxBlock({ content, data, onUpdate, onUpdateData }: 
           ref={ref}
           contentEditable
           suppressContentEditableWarning
-          className="focus:outline-none text-slate-300 text-base leading-7 min-h-[2em]"
+          className="focus:outline-none text-slate-100 text-base leading-7 min-h-[2em]"
           data-placeholder="テキストボックスに入力..."
           onBlur={(e) => onUpdate(e.currentTarget.innerHTML)}
         />

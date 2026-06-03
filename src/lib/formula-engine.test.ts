@@ -114,12 +114,13 @@ describe('evaluateCell — basics', () => {
 
   it('detects circular reference', () => {
     const cells = makeCells({ A1: '=B1', B1: '=A1' })
-    expect(evalRef('A1', cells)).toBe('#REF!')
+    // The engine reports circular refs with a dedicated, clearer code than Excel's generic #REF!
+    expect(evalRef('A1', cells)).toBe('#CIRCULAR!')
   })
 
   it('handles self-reference', () => {
     const cells = makeCells({ A1: '=A1' })
-    expect(evalRef('A1', cells)).toBe('#REF!')
+    expect(evalRef('A1', cells)).toBe('#CIRCULAR!')
   })
 
   it('handles string concatenation with &', () => {
@@ -611,6 +612,24 @@ describe('formatCellValue', () => {
   it('returns string as-is', () => {
     expect(formatCellValue('hello')).toBe('hello')
   })
+
+  it('comma format adds thousands separators', () => {
+    expect(formatCellValue(1234567, { numberFormat: 'comma' })).toBe('1,234,567')
+  })
+
+  it('USD currency format', () => {
+    expect(formatCellValue(1000, { numberFormat: 'currencyUSD' })).toBe('$1,000.00')
+    expect(formatCellValue(-50, { numberFormat: 'currencyUSD' })).toBe('-$50.00')
+  })
+
+  it('EUR currency format', () => {
+    expect(formatCellValue(2500, { numberFormat: 'currencyEUR' })).toBe('€2,500.00')
+  })
+
+  it('accounting format wraps negatives in parentheses', () => {
+    expect(formatCellValue(1234, { numberFormat: 'accounting' })).toBe('¥1,234')
+    expect(formatCellValue(-1234, { numberFormat: 'accounting' })).toBe('(¥1,234)')
+  })
 })
 
 // ══════════════════════════════════
@@ -667,5 +686,38 @@ describe('Edge cases', () => {
     })
     // 2*3 + 10/2 - 1 = 6 + 5 - 1 = 10
     expect(evalRef('F1', cells)).toBe(10)
+  })
+})
+
+describe('financial functions', () => {
+  const ev = (f: string) => evalRef('A1', makeCells({ A1: f }))
+  it('PMT computes loan payment', () => {
+    // $10,000 loan, 5%/yr over 12 monthly periods → ~ -856.07
+    const v = Number(ev('=PMT(0.05/12, 12, 10000)'))
+    expect(v).toBeCloseTo(-856.07, 1)
+  })
+  it('FV computes future value of savings', () => {
+    // save 100/mo at 6%/yr for 24 mo → ~ 2543.20 (negative pmt → positive fv)
+    const v = Number(ev('=FV(0.06/12, 24, -100)'))
+    expect(v).toBeCloseTo(2543.20, 0)
+  })
+  it('PV computes present value', () => {
+    const v = Number(ev('=PV(0.05/12, 12, -856.07)'))
+    expect(v).toBeCloseTo(10000, 0)
+  })
+  it('NPER computes number of periods', () => {
+    const v = Number(ev('=NPER(0.05/12, -856.07, 10000)'))
+    expect(v).toBeCloseTo(12, 0)
+  })
+  it('RATE recovers the periodic rate', () => {
+    const v = Number(ev('=RATE(12, -856.07, 10000)'))
+    expect(v).toBeCloseTo(0.05/12, 4)
+  })
+  it('IPMT + PPMT sum to PMT', () => {
+    const ipmt = Number(ev('=IPMT(0.05/12, 1, 12, 10000)'))
+    const ppmt = Number(ev('=PPMT(0.05/12, 1, 12, 10000)'))
+    expect(ipmt + ppmt).toBeCloseTo(-856.07, 1)
+    // first period: interest = -10000 * 0.05/12 ≈ -41.67
+    expect(ipmt).toBeCloseTo(-41.67, 1)
   })
 })

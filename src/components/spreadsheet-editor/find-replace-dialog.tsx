@@ -121,10 +121,15 @@ export function FindReplaceDialog({
           </div>
         )}
 
-        {findResults.length > 0 && (
+        {findText && findResults.length > 0 && (
           <div className="flex items-center justify-between text-xs text-slate-300">
-            <span>
-              {findIndex + 1} / {findResults.length} 件
+            <span className="flex items-center gap-1.5">
+              <span className="bg-indigo-600/30 text-indigo-300 px-1.5 py-0.5 rounded-full text-[10px] font-medium">
+                {findResults.length}件見つかりました
+              </span>
+              <span className="text-slate-400">
+                ({findIndex + 1} / {findResults.length})
+              </span>
             </span>
             <div className="flex gap-1">
               <button onClick={onFindPrev} className="px-2 py-0.5 bg-slate-700 rounded hover:bg-slate-600">
@@ -137,7 +142,13 @@ export function FindReplaceDialog({
           </div>
         )}
 
-        {findText && findResults.length === 0 && <div className="text-xs text-red-400">一致なし</div>}
+        {findText && findResults.length === 0 && (
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="bg-red-600/20 text-red-400 px-1.5 py-0.5 rounded-full text-[10px] font-medium">
+              見つかりません
+            </span>
+          </div>
+        )}
       </div>
     </div>
   )

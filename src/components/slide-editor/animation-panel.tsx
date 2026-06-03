@@ -1,13 +1,15 @@
 'use client'
 
+import { useState } from 'react'
 import type { Slide, SlideElement, ElementAnimation } from '@/types'
-import { X } from 'lucide-react'
+import { X, Eye, Layers } from 'lucide-react'
 
 interface Props {
   slide: Slide
   dispatch: React.Dispatch<any>
   onClose: () => void
   selectedElementIds?: string[]
+  onPreviewAnimation?: (elementId: string) => void
 }
 
 const ANIMATIONS: {
@@ -54,10 +56,15 @@ const TRIGGERS: { value: ElementAnimation['trigger']; label: string }[] = [
   { value: 'after-previous', label: '前の後' },
 ]
 
-export default function AnimationPanel({ slide, dispatch, onClose, selectedElementIds = [] }: Props) {
+export default function AnimationPanel({ slide, dispatch, onClose, selectedElementIds = [], onPreviewAnimation }: Props) {
+  const [batchAnimType, setBatchAnimType] = useState<ElementAnimation['type'] | null>(null)
+  const [batchAnimCat, setBatchAnimCat] = useState<ElementAnimation['category'] | null>(null)
+
   const animatedElements = slide.elements
     .filter((el) => 'animation' in el && el.animation)
     .sort((a, b) => ((a as any).animation?.order ?? 0) - ((b as any).animation?.order ?? 0))
+
+  const isBatchMode = selectedElementIds.length > 1
 
   function getLabel(el: SlideElement): string {
     if ('content' in el && el.content) return el.content.replace(/<[^>]*>/g, '').slice(0, 20) || el.type
@@ -126,11 +133,63 @@ export default function AnimationPanel({ slide, dispatch, onClose, selectedEleme
 
       {/* Animation picker */}
       <div className="px-4 py-3">
+        {selectedElementIds.length === 0 && animatedElements.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Layers size={24} className="text-slate-600 mb-2" />
+            <p className="text-sm text-slate-400 mb-1">要素を選択してください</p>
+            <p className="text-[10px] text-slate-600">キャンバス上の要素をクリックしてアニメーションを設定できます</p>
+          </div>
+        )}
         <p className="text-xs text-slate-500 mb-2">
           {selectedElementIds.length > 0
             ? `${selectedElementIds.length}個の要素を選択中`
             : '要素を選択してからアニメーションを適用'}
         </p>
+
+        {/* Batch mode UI */}
+        {isBatchMode && (
+          <div className="mb-3 p-2 rounded bg-indigo-900/30 border border-indigo-700/40">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Layers size={12} className="text-indigo-400" />
+              <span className="text-[10px] text-indigo-300 font-medium">一括設定モード</span>
+            </div>
+            {batchAnimType && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400">
+                  選択中: {ANIMATIONS.flatMap((c) => c.items).find((a) => a.type === batchAnimType)?.label ?? batchAnimType}
+                </span>
+                <button
+                  onClick={() => {
+                    if (!batchAnimType || !batchAnimCat) return
+                    const targets = slide.elements.filter((el) => selectedElementIds.includes(el.id))
+                    const nextOrder = animatedElements.length
+                    targets.forEach((el, i) => {
+                      dispatch({
+                        type: 'SET_ELEMENT_ANIMATION',
+                        slideId: slide.id,
+                        elementId: el.id,
+                        animation: {
+                          type: batchAnimType,
+                          category: batchAnimCat,
+                          duration: 0.5,
+                          delay: 0,
+                          trigger: 'on-click',
+                          order: nextOrder + i,
+                        },
+                      })
+                    })
+                    setBatchAnimType(null)
+                    setBatchAnimCat(null)
+                  }}
+                  className="px-2 py-1 rounded text-[10px] font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                >
+                  一括適用 ({selectedElementIds.length}個)
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {ANIMATIONS.map((cat) => (
           <div key={cat.category} className="mb-3">
             <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider mb-1">{cat.category}</p>
@@ -139,6 +198,12 @@ export default function AnimationPanel({ slide, dispatch, onClose, selectedEleme
                 <button
                   key={anim.type}
                   onClick={() => {
+                    if (isBatchMode) {
+                      // In batch mode, select the animation type first; user clicks batch button to apply
+                      setBatchAnimType(anim.type)
+                      setBatchAnimCat(anim.cat)
+                      return
+                    }
                     const targets =
                       selectedElementIds.length > 0
                         ? slide.elements.filter((el) => selectedElementIds.includes(el.id))
@@ -161,7 +226,11 @@ export default function AnimationPanel({ slide, dispatch, onClose, selectedEleme
                       })
                     })
                   }}
-                  className="px-2 py-1.5 rounded text-[10px] text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 transition-colors text-left"
+                  className={`px-2 py-1.5 rounded text-[10px] text-slate-300 bg-slate-800 hover:bg-slate-700 border transition-colors text-left ${
+                    isBatchMode && batchAnimType === anim.type
+                      ? 'border-indigo-500 bg-indigo-900/30'
+                      : 'border-slate-700 hover:border-slate-500'
+                  }`}
                 >
                   {anim.label}
                 </button>
@@ -170,6 +239,26 @@ export default function AnimationPanel({ slide, dispatch, onClose, selectedEleme
           </div>
         ))}
       </div>
+
+      {/* Preview button for animated elements */}
+      {onPreviewAnimation && animatedElements.length > 0 && (
+        <div className="px-4 py-2 border-t border-slate-700">
+          <p className="text-[10px] text-slate-500 mb-1.5">キャンバスでプレビュー</p>
+          <div className="space-y-1">
+            {animatedElements.map((el) => (
+              <button
+                key={el.id}
+                onClick={() => onPreviewAnimation(el.id)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-[10px] text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-indigo-500 transition-colors"
+              >
+                <Eye size={10} className="text-indigo-400 flex-shrink-0" />
+                <span className="truncate">{getLabel(el)}</span>
+                <span className="ml-auto text-slate-500">プレビュー</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

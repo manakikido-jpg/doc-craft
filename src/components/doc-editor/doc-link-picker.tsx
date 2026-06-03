@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import type { DocumentMeta } from '@/types'
-import { listDocuments } from '@/lib/cloud-store'
-import { FileText, Presentation, Table2, Link2, Search } from 'lucide-react'
+import { listDocuments } from '@/lib/storage/cloud-store'
+import { FileText, Presentation, Table2, Link2, Search, ExternalLink } from 'lucide-react'
 
 interface Props {
   open: boolean
@@ -56,17 +56,40 @@ export default function DocLinkPicker({ open, anchorRect, onSelect, onClose }: P
     setSelectedIndex(0)
   }, [search])
 
+  const looksLikeUrl = search.includes('.') || search.startsWith('http')
+
+  function insertExternalLink() {
+    const url = search.startsWith('http') ? search : `https://${search}`
+    const sel = window.getSelection()
+    const text = sel?.toString() || url
+    document.execCommand(
+      'insertHTML',
+      false,
+      `<a href="${url}" style="color: #818cf8; text-decoration: underline;" target="_blank" rel="noopener noreferrer">${text}</a>&nbsp;`
+    )
+    onClose()
+  }
+
+  // When the external URL option is shown, it takes index 0 and shifts doc indices by 1
+  const hasUrlOption = looksLikeUrl
+  const totalItems = (hasUrlOption ? 1 : 0) + filtered.length
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1))
+      setSelectedIndex((i) => Math.min(i + 1, totalItems - 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setSelectedIndex((i) => Math.max(i - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      if (filtered[selectedIndex]) {
-        onSelect(filtered[selectedIndex])
+      if (hasUrlOption && selectedIndex === 0) {
+        insertExternalLink()
+      } else {
+        const docIndex = hasUrlOption ? selectedIndex - 1 : selectedIndex
+        if (filtered[docIndex]) {
+          onSelect(filtered[docIndex])
+        }
       }
     } else if (e.key === 'Escape') {
       onClose()
@@ -103,27 +126,46 @@ export default function DocLinkPicker({ open, anchorRect, onSelect, onClose }: P
         </div>
 
         <div className="max-h-60 overflow-y-auto py-1 custom-scrollbar">
-          {filtered.length === 0 ? (
+          {hasUrlOption && (
+            <button
+              onClick={insertExternalLink}
+              className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
+                selectedIndex === 0 ? 'bg-indigo-500/15 text-white' : 'text-indigo-400 hover:bg-indigo-500/15'
+              }`}
+            >
+              <ExternalLink size={14} />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium">外部リンクとして挿入</div>
+                <div className="text-[10px] text-slate-500 truncate">
+                  {search.startsWith('http') ? search : `https://${search}`}
+                </div>
+              </div>
+            </button>
+          )}
+          {filtered.length === 0 && !hasUrlOption ? (
             <div className="px-3 py-4 text-center text-xs text-slate-500">ドキュメントが見つかりません</div>
           ) : (
-            filtered.map((doc, i) => (
-              <button
-                key={doc.id}
-                onClick={() => onSelect(doc)}
-                className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
-                  i === selectedIndex ? 'bg-indigo-500/15 text-white' : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                {TYPE_ICONS[doc.type] || <FileText size={14} className="text-slate-400" />}
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium truncate">{doc.title}</div>
-                  <div className="text-[10px] text-slate-500">
-                    {doc.type === 'slides' ? 'スライド' : doc.type === 'spreadsheet' ? 'シート' : 'ドキュメント'}
+            filtered.map((doc, i) => {
+              const itemIndex = hasUrlOption ? i + 1 : i
+              return (
+                <button
+                  key={doc.id}
+                  onClick={() => onSelect(doc)}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
+                    itemIndex === selectedIndex ? 'bg-indigo-500/15 text-white' : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  {TYPE_ICONS[doc.type] || <FileText size={14} className="text-slate-400" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium truncate">{doc.title}</div>
+                    <div className="text-[10px] text-slate-500">
+                      {doc.type === 'slides' ? 'スライド' : doc.type === 'spreadsheet' ? 'シート' : 'ドキュメント'}
+                    </div>
                   </div>
-                </div>
-                <Link2 size={12} className="text-slate-600 flex-shrink-0" />
-              </button>
-            ))
+                  <Link2 size={12} className="text-slate-600 flex-shrink-0" />
+                </button>
+              )
+            })
           )}
         </div>
 

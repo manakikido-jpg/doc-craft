@@ -15,12 +15,28 @@ interface Match {
   index: number
 }
 
+const BLOCK_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'すべて' },
+  { value: 'h1', label: 'H1' },
+  { value: 'h2', label: 'H2' },
+  { value: 'h3', label: 'H3' },
+  { value: 'paragraph', label: '段落' },
+  { value: 'bullet', label: '箇条書き' },
+  { value: 'numbered', label: '番号付き' },
+  { value: 'quote', label: '引用' },
+  { value: 'code', label: 'コード' },
+  { value: 'bold', label: '太字のみ' },
+]
+
 export default function FindReplace({ blocks, onReplace, onClose }: Props) {
   const [search, setSearch] = useState('')
   const [replacement, setReplacement] = useState('')
   const [showReplace, setShowReplace] = useState(false)
   const [matches, setMatches] = useState<Match[]>([])
   const [currentMatch, setCurrentMatch] = useState(0)
+  const [useRegex, setUseRegex] = useState(false)
+  const [regexError, setRegexError] = useState('')
+  const [blockTypeFilter, setBlockTypeFilter] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -30,22 +46,70 @@ export default function FindReplace({ blocks, onReplace, onClose }: Props) {
   useEffect(() => {
     if (!search) {
       setMatches([])
+      setRegexError('')
       return
     }
+
     const found: Match[] = []
-    blocks.forEach((b) => {
-      if (b.type === 'divider' || b.type === 'image') return
-      const text = b.content.toLowerCase()
-      const term = search.toLowerCase()
-      let idx = text.indexOf(term)
-      while (idx !== -1) {
-        found.push({ blockId: b.id, index: idx })
-        idx = text.indexOf(term, idx + 1)
+
+    // Filter blocks by type if a block type filter is set
+    const filteredBlocks = blocks.filter((b) => {
+      if (b.type === 'divider' || b.type === 'image') return false
+      if (!blockTypeFilter) return true
+      if (blockTypeFilter === 'bold') {
+        // Match only blocks containing <strong> or <b> tags
+        return /<(strong|b)>/i.test(b.content)
       }
+      return b.type === blockTypeFilter
     })
+
+    if (useRegex) {
+      try {
+        const regex = new RegExp(search, 'gi')
+        setRegexError('')
+        filteredBlocks.forEach((b) => {
+          const text = b.content
+          let m: RegExpExecArray | null
+          // Reset lastIndex for safety
+          regex.lastIndex = 0
+          m = regex.exec(text)
+          while (m !== null) {
+            found.push({ blockId: b.id, index: m.index })
+            // Prevent infinite loop on zero-length matches
+            if (m.index === regex.lastIndex) {
+              regex.lastIndex++
+            }
+            m = regex.exec(text)
+          }
+        })
+      } catch (e) {
+        setRegexError((e as Error).message)
+        setMatches([])
+        return
+      }
+    } else {
+      filteredBlocks.forEach((b) => {
+        let searchText: string
+        if (blockTypeFilter === 'bold') {
+          // Extract only bold text content
+          const boldMatches = b.content.match(/<(strong|b)>(.*?)<\/(strong|b)>/gi)
+          searchText = boldMatches ? boldMatches.map((m) => m.replace(/<[^>]*>/g, '')).join(' ') : ''
+        } else {
+          searchText = b.content
+        }
+        const text = searchText.toLowerCase()
+        const term = search.toLowerCase()
+        let idx = text.indexOf(term)
+        while (idx !== -1) {
+          found.push({ blockId: b.id, index: idx })
+          idx = text.indexOf(term, idx + 1)
+        }
+      })
+    }
+
     setMatches(found)
     setCurrentMatch(0)
-  }, [search, blocks])
+  }, [search, blocks, useRegex, blockTypeFilter])
 
   useEffect(() => {
     if (matches.length === 0 || !search) return
@@ -80,7 +144,7 @@ export default function FindReplace({ blocks, onReplace, onClose }: Props) {
   }, [onClose, matches])
 
   return (
-    <div className="fixed top-14 right-4 z-50 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl p-3 w-80 animate-slide-up">
+    <div className="fixed top-14 right-4 z-50 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl p-3 w-96 animate-slide-up">
       <div className="flex items-center gap-2 mb-2">
         <Search size={14} className="text-slate-500 flex-shrink-0" />
         <input
@@ -122,6 +186,39 @@ export default function FindReplace({ blocks, onReplace, onClose }: Props) {
           <X size={14} />
         </button>
       </div>
+
+      {/* Regex toggle + Block type filter */}
+      <div className="flex items-center gap-2 mb-2">
+        <button
+          onClick={() => setUseRegex(!useRegex)}
+          className={`px-2 py-1 text-xs rounded border transition-colors ${
+            useRegex
+              ? 'text-indigo-300 border-indigo-500 bg-indigo-500/20'
+              : 'text-slate-400 border-slate-700 bg-slate-800 hover:text-white hover:bg-slate-700'
+          }`}
+          title="正規表現"
+        >
+          正規表現
+        </button>
+        <select
+          value={blockTypeFilter}
+          onChange={(e) => setBlockTypeFilter(e.target.value)}
+          className="flex-1 bg-slate-800 text-slate-300 text-xs rounded px-2 py-1 border border-slate-700 focus:border-indigo-500 focus:outline-none"
+          title="書式で検索"
+        >
+          {BLOCK_TYPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {regexError && (
+        <div className="mb-2 text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded px-2 py-1">
+          {regexError}
+        </div>
+      )}
 
       {showReplace && (
         <div className="flex items-center gap-2">

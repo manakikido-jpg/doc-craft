@@ -29,7 +29,7 @@ export function ColorModeProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
-    document.documentElement.classList.toggle('light-mode', colorMode === 'light')
+    document.documentElement.classList.toggle('light-theme', colorMode === 'light')
   }, [colorMode])
 
   function setColorMode(mode: ColorMode) {

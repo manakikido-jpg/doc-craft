@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import type { SlidesDocument, SlideTextElement } from '@/types'
 import { SLIDE_THEMES } from '@/lib/themes'
 import { X } from 'lucide-react'
@@ -80,50 +80,58 @@ export default function SlideSorter({ state, dispatch, onClose }: Props) {
             const isSelected = selected.has(slide.id)
             const baseTheme = SLIDE_THEMES[slide.themeKey]
             const theme = slide.customTheme ? { ...baseTheme, ...slide.customTheme } : baseTheme
+            const section = (state.sections || []).find(s => s.startSlideIndex === i)
             return (
-              <div
-                key={slide.id}
-                className={`cursor-pointer rounded-lg overflow-hidden transition-all ${isSelected ? 'ring-2 ring-indigo-500 scale-[1.02]' : 'hover:ring-1 hover:ring-slate-600'}`}
-                onClick={(e) => handleClick(slide.id, e)}
-                onDoubleClick={() => handleDoubleClick(slide.id)}
-              >
-                <div className="aspect-video relative overflow-hidden" style={{ background: theme.background }}>
-                  {slide.backgroundImage && (
-                    <div
-                      className="absolute inset-0"
-                      style={{
-                        backgroundImage: `url(${slide.backgroundImage})`,
-                        backgroundSize: slide.backgroundFit || 'cover',
-                        backgroundPosition: 'center',
-                      }}
-                    />
-                  )}
-                  {slide.elements
-                    .filter(
-                      (e): e is SlideTextElement => e.type === 'title' || e.type === 'subtitle' || e.type === 'body',
-                    )
-                    .slice(0, 2)
-                    .map((el) => (
+              <Fragment key={slide.id}>
+                {section && (
+                  <div className="col-span-full flex items-center gap-2 py-2 px-1 border-b border-slate-700">
+                    <div className="w-3 h-3 rounded-full" style={{ background: section.color || '#6366f1' }} />
+                    <span className="text-xs text-slate-300 font-medium">{section.name}</span>
+                  </div>
+                )}
+                <div
+                  className={`cursor-pointer rounded-lg overflow-hidden transition-all ${isSelected ? 'ring-2 ring-indigo-500 scale-[1.02]' : 'hover:ring-1 hover:ring-slate-600'}`}
+                  onClick={(e) => handleClick(slide.id, e)}
+                  onDoubleClick={() => handleDoubleClick(slide.id)}
+                >
+                  <div className="aspect-video relative overflow-hidden" style={{ background: theme.background }}>
+                    {slide.backgroundImage && (
                       <div
-                        key={el.id}
-                        className="px-2 py-0.5 truncate"
+                        className="absolute inset-0"
                         style={{
-                          position: 'absolute',
-                          left: `${el.x}%`,
-                          top: `${el.y}%`,
-                          width: `${el.w}%`,
-                          color: el.type === 'title' ? theme.titleColor : theme.bodyColor,
-                          fontSize: `${Math.max(6, el.fontSize * 0.2)}px`,
-                          fontWeight: el.fontWeight,
-                          textAlign: el.align,
+                          backgroundImage: `url(${slide.backgroundImage})`,
+                          backgroundSize: slide.backgroundFit || 'cover',
+                          backgroundPosition: 'center',
                         }}
-                      >
-                        {el.content}
-                      </div>
-                    ))}
+                      />
+                    )}
+                    {slide.elements
+                      .filter(
+                        (e): e is SlideTextElement => e.type === 'title' || e.type === 'subtitle' || e.type === 'body',
+                      )
+                      .slice(0, 2)
+                      .map((el) => (
+                        <div
+                          key={el.id}
+                          className="px-2 py-0.5 truncate"
+                          style={{
+                            position: 'absolute',
+                            left: `${el.x}%`,
+                            top: `${el.y}%`,
+                            width: `${el.w}%`,
+                            color: el.type === 'title' ? theme.titleColor : theme.bodyColor,
+                            fontSize: `${Math.max(6, el.fontSize * 0.2)}px`,
+                            fontWeight: el.fontWeight,
+                            textAlign: el.align,
+                          }}
+                        >
+                          {el.content?.replace(/<[^>]*>/g, '').slice(0, 50)}
+                        </div>
+                      ))}
+                  </div>
+                  <div className="bg-slate-800 px-2 py-1 text-xs text-slate-400 text-center">{i + 1}</div>
                 </div>
-                <div className="bg-slate-800 px-2 py-1 text-xs text-slate-400 text-center">{i + 1}</div>
-              </div>
+              </Fragment>
             )
           })}
         </div>
