@@ -66,13 +66,6 @@ export const AI_SKILLS: AISkill[] = [
   { id: 'product', name: '製品紹介', icon: 'target', description: '新製品・サービスのローンチ', type: 'both' },
   { id: 'education', name: '教育・研修', icon: 'bookOpen', description: '社内研修・セミナー・授業', type: 'both' },
   { id: 'marketing', name: 'マーケ戦略', icon: 'trendingUp', description: 'マーケティング計画・戦略', type: 'both' },
-  {
-    id: 'workshop',
-    name: 'ワークショップ企画',
-    icon: 'lightbulb',
-    description: '体験会・探究学習・イベントの企画運営',
-    type: 'both',
-  },
   { id: 'meeting', name: '会議議事録', icon: 'notebookPen', description: '会議の記録・決定事項まとめ', type: 'doc' },
   { id: 'techspec', name: '技術仕様書', icon: 'cog', description: '技術設計・API仕様・要件定義', type: 'doc' },
 ]
@@ -220,43 +213,6 @@ export function buildSkillSlides(skillId: string, topic: string): SlideSkillResu
       {
         title: 'まとめと評価',
         bullets: ['学んだポイントの振り返り', '理解度チェック', '参考資料・次のステップ'],
-        themeKey: 'midnight',
-      },
-    ],
-    workshop: [
-      {
-        title: `${t} — ワークショップ企画`,
-        bullets: ['開催の目的・コンセプト', '対象者と定員', '開催概要（日時・場所・参加費）'],
-        themeKey: 'dark-blue',
-      },
-      {
-        title: 'ねらいと体験価値',
-        bullets: ['参加者が持ち帰る気づき・学び', '「できた！」を引き出す仕掛け', '可能性を広げる問いの設計'],
-        themeKey: 'violet-slate',
-      },
-      {
-        title: '当日のプログラム',
-        bullets: [
-          'オープニング・アイスブレイク（15分）',
-          '体験・探究ワーク（60分）',
-          '発表・シェアタイム（30分）',
-          '振り返り・クロージング（15分）',
-        ],
-        themeKey: 'emerald',
-      },
-      {
-        title: '準備と運営体制',
-        bullets: ['必要な教材・機材リスト', 'スタッフの役割分担', '会場レイアウトと動線', '安全面・緊急時の対応'],
-        themeKey: 'ocean',
-      },
-      {
-        title: '集客と告知',
-        bullets: ['告知チャネル（SNS・チラシ・口コミ）', '申込フローとリマインド', '参加ハードルを下げる工夫'],
-        themeKey: 'amber',
-      },
-      {
-        title: '振り返りと次回へ',
-        bullets: ['参加者アンケートの設計', '改善ポイントの洗い出し', '次回開催・継続企画への展開'],
         themeKey: 'midnight',
       },
     ],
@@ -444,49 +400,6 @@ export function buildSkillDocSections(skillId: string, topic: string): DocSkillR
         heading: '参考資料',
         paragraphs: ['さらに学習を深めたい方は以下を参照してください。'],
         bullets: ['書籍: [タイトル]', 'Web: [URL/サイト名]', '社内Wiki: [ページ名]'],
-      },
-    ],
-    workshop: [
-      {
-        heading: '企画概要',
-        paragraphs: [`${t}のワークショップ企画書です。参加者一人ひとりの可能性を引き出す体験の場を設計します。`],
-        bullets: ['日時: 20XX年X月X日 XX:XX〜XX:XX', '場所: [会場名]', '対象: [対象者]（定員 XX名）', '参加費: ¥X,XXX'],
-      },
-      {
-        heading: 'ねらい・ゴール',
-        paragraphs: ['本ワークショップを通じて、参加者が以下を持ち帰ることを目指します。'],
-        bullets: ['気づき: [テーマ]への新しい視点', '体験: [活動]を通じた「できた！」の実感', 'つながり: 参加者同士の交流と学び合い'],
-      },
-      {
-        heading: 'プログラム詳細',
-        paragraphs: ['当日は以下のタイムテーブルで進行します。'],
-        bullets: [
-          'XX:00 受付・オープニング',
-          'XX:15 アイスブレイク: [内容]',
-          'XX:30 体験・探究ワーク: [内容]',
-          'XX:30 発表・シェアタイム',
-          'XX:00 振り返り・クロージング',
-        ],
-      },
-      {
-        heading: '準備・運営体制',
-        paragraphs: ['以下の準備と役割分担で運営します。'],
-        bullets: [
-          '教材・機材: [リスト]',
-          '進行: [担当者] / サポート: [担当者]',
-          '会場設営: [レイアウト・動線]',
-          '安全対応: [緊急連絡先・保険]',
-        ],
-      },
-      {
-        heading: '集客・振り返り',
-        paragraphs: ['告知から開催後のフォローまでを計画します。'],
-        bullets: [
-          '告知: SNS・チラシ・口コミ（X週間前から）',
-          '申込: [フォーム/連絡先]・前日リマインド',
-          'アンケート: 満足度・気づき・次回への要望',
-          '次回企画: 振り返りをもとに改善・継続開催へ',
-        ],
       },
     ],
     marketing: [
@@ -679,16 +592,6 @@ const SUMMARIZE_STRUCTURES: Record<string, { headings: string[]; intro: string[]
       '基礎知識をまとめます。',
       '実践内容に関する項目です。',
       'まとめと評価です。',
-    ],
-  },
-  workshop: {
-    headings: ['企画概要', 'ねらい・ゴール', 'プログラム内容', '準備・運営', '振り返り・次回'],
-    intro: [
-      '企画の概要を整理しました。',
-      'ねらいとゴールに関する内容です。',
-      'プログラム内容をまとめます。',
-      '準備と運営に関する項目です。',
-      '振り返りと次回への展開です。',
     ],
   },
   marketing: {

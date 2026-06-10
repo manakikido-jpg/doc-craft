@@ -21,7 +21,6 @@ import {
   Table2,
   Users,
   Receipt,
-  Lightbulb,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -47,7 +46,6 @@ const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: 
   table: Table2,
   users: Users,
   receipt: Receipt,
-  lightbulb: Lightbulb,
 }
 
 export default function IconFromKey({
