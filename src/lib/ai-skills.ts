@@ -66,6 +66,13 @@ export const AI_SKILLS: AISkill[] = [
   { id: 'product', name: '製品紹介', icon: 'target', description: '新製品・サービスのローンチ', type: 'both' },
   { id: 'education', name: '教育・研修', icon: 'bookOpen', description: '社内研修・セミナー・授業', type: 'both' },
   { id: 'marketing', name: 'マーケ戦略', icon: 'trendingUp', description: 'マーケティング計画・戦略', type: 'both' },
+  {
+    id: 'snspost',
+    name: 'キャリアSNS投稿',
+    icon: 'megaphone',
+    description: '転職・キャリア系SNS投稿の構成と企画書',
+    type: 'both',
+  },
   { id: 'meeting', name: '会議議事録', icon: 'notebookPen', description: '会議の記録・決定事項まとめ', type: 'doc' },
   { id: 'techspec', name: '技術仕様書', icon: 'cog', description: '技術設計・API仕様・要件定義', type: 'doc' },
 ]
@@ -213,6 +220,38 @@ export function buildSkillSlides(skillId: string, topic: string): SlideSkillResu
       {
         title: 'まとめと評価',
         bullets: ['学んだポイントの振り返り', '理解度チェック', '参考資料・次のステップ'],
+        themeKey: 'midnight',
+      },
+    ],
+    snspost: [
+      {
+        title: t,
+        bullets: ['ターゲットの悩みを一言で（表紙フック）', '「保存して見返したくなる」価値の提示', '続きを読みたくなる問いかけ'],
+        themeKey: 'dark-blue',
+      },
+      {
+        title: 'あるある・共感',
+        bullets: ['「転職したいけど何から？」の悩みに寄り添う', 'あるあるシーンの具体例', '読者の現状をことばにして言語化'],
+        themeKey: 'rose-pink',
+      },
+      {
+        title: '原因・ヒント',
+        bullets: ['悩みの原因をシンプルに解説', '知っておきたい前提知識・統計', 'よくある誤解の訂正'],
+        themeKey: 'violet-slate',
+      },
+      {
+        title: 'ノウハウ・ステップ',
+        bullets: ['Step 1: [最初の一歩]', 'Step 2: [具体的な行動]', 'Step 3: [継続のコツ]', 'つまずきやすいポイント'],
+        themeKey: 'emerald',
+      },
+      {
+        title: '具体例・変化のイメージ',
+        bullets: ['未経験・他業界からのキャリアチェンジ例', '年収・働き方の変化は「目安・可能性」の表現で', 'ビフォー → アフターの対比'],
+        themeKey: 'ocean',
+      },
+      {
+        title: '次の一歩（CTA）',
+        bullets: ['無料市場価値診断への誘導（プロフィールリンク）', '完全無料・勧誘なしを明記', '保存・フォローのお願い'],
         themeKey: 'midnight',
       },
     ],
@@ -400,6 +439,52 @@ export function buildSkillDocSections(skillId: string, topic: string): DocSkillR
         heading: '参考資料',
         paragraphs: ['さらに学習を深めたい方は以下を参照してください。'],
         bullets: ['書籍: [タイトル]', 'Web: [URL/サイト名]', '社内Wiki: [ページ名]'],
+      },
+    ],
+    snspost: [
+      {
+        heading: '投稿概要',
+        paragraphs: [`「${t}」をテーマにしたSNS投稿（カルーセル）の企画書です。`],
+        bullets: [
+          '形式: 共感系A / ノウハウ系B（どちらかを選択）',
+          'ターゲット: 20〜30代・転職やキャリアに悩む層',
+          'ゴール: 無料市場価値診断への誘導',
+          'スライド枚数: X枚（表紙含む）',
+        ],
+      },
+      {
+        heading: 'リサーチメモ',
+        paragraphs: ['投稿の根拠となる情報を整理します。'],
+        bullets: ['統計・データ: [出典つきで記載]', 'よくある悩み・検索ワード: [リスト]', '参考アカウントの類似投稿: [URL・学べる点]'],
+      },
+      {
+        heading: '構成案',
+        paragraphs: ['ストーリーの流れを設計します（共感 → 原因/ヒント → 診断誘導）。'],
+        bullets: [
+          '1枚目（表紙）: フックとなる見出し',
+          '2〜3枚目: 共感・あるある / 原因の解説',
+          '4〜5枚目: ノウハウ・ステップ / 具体例',
+          '最終枚: CTA（無料市場価値診断へ）',
+        ],
+      },
+      {
+        heading: 'キャプション・ハッシュタグ',
+        paragraphs: ['投稿本文とタグを作成します。'],
+        bullets: [
+          '導入: 投稿の要約・自己紹介（国家資格キャリアコンサルタント）',
+          'CTA文言: 無料市場価値診断への誘導（完全無料・勧誘なし）',
+          'ハッシュタグ: #転職 #キャリア など X個を選定',
+        ],
+      },
+      {
+        heading: '公開前チェックリスト',
+        paragraphs: ['公開前に以下を確認します。'],
+        bullets: [
+          '誤字脱字・情報の正確性チェック',
+          '年収・成果は断定せず「目安・可能性」の表現か（景表法）',
+          'トンマナ統一（フォント・配色・アイコンスタイル）',
+          '社内レビュー・修正対応の完了',
+        ],
       },
     ],
     marketing: [
@@ -592,6 +677,16 @@ const SUMMARIZE_STRUCTURES: Record<string, { headings: string[]; intro: string[]
       '基礎知識をまとめます。',
       '実践内容に関する項目です。',
       'まとめと評価です。',
+    ],
+  },
+  snspost: {
+    headings: ['投稿概要', 'リサーチ', '構成案', 'キャプション・タグ', 'チェック・レビュー'],
+    intro: [
+      '投稿の概要を整理しました。',
+      'リサーチ内容をまとめます。',
+      '構成案に関する内容です。',
+      'キャプションとタグの案です。',
+      '公開前の確認事項です。',
     ],
   },
   marketing: {
