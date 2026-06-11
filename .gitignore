@@ -43,6 +43,9 @@ next-env.d.ts
 # claude（ローカル設定は除外、共有スキルはコミット対象）
 .claude/*
 !.claude/skills/
+# スキルのユーザー固有メモリ（config.json・logs）は各自ローカル限定
+.claude/skills/*/config.json
+.claude/skills/*/logs/
 
 # eslint
 eslint-output.json
