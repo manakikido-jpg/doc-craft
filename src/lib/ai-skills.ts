@@ -1,4 +1,5 @@
 import type { SlideThemeKey } from '@/types'
+import { buildAuditReport } from './content-audit'
 
 export interface AISkill {
   id: string
@@ -85,6 +86,13 @@ export const AI_SKILLS: AISkill[] = [
     name: 'キャリア面談シート',
     icon: 'users',
     description: '1on1キャリア面談の準備・記録シート',
+    type: 'doc',
+  },
+  {
+    id: 'audit',
+    name: '公開前チェック',
+    icon: 'shield',
+    description: '文面を貼り付けると景表法・導線リスクを自動監査',
     type: 'doc',
   },
   { id: 'meeting', name: '会議議事録', icon: 'notebookPen', description: '会議の記録・決定事項まとめ', type: 'doc' },
@@ -665,6 +673,52 @@ export function buildSkillDocSections(skillId: string, topic: string): DocSkillR
         ],
       },
     ],
+    audit: [
+      {
+        heading: '使い方',
+        paragraphs: [
+          `このスキルは、作成済みの投稿文・LINE文面を入力欄に貼り付けると自動で監査します。「${t}」のようにテーマ名だけ入力された場合は、手動チェック用のテンプレートを生成します。`,
+        ],
+        bullets: [
+          '自動検出: 断定・保証表現 / 成果の断定 / No.1表現 / 煽り文句',
+          '計測: 文字数（LINE 500文字制限）/ ハッシュタグ数 / CTA分散',
+          '出力: 重大度別の指摘と言い換え案、総合スコア（A/B/C判定）',
+        ],
+      },
+      {
+        heading: '景表法・表現チェック',
+        paragraphs: ['以下の表現が含まれていないか確認します。'],
+        bullets: [
+          '断定・保証: 「必ず」「絶対」「100%」「確実に」',
+          '成果の断定: 「年収が上がる」→「年収アップを目指せる」へ',
+          '最上級: 「No.1」「日本一」は根拠（調査元・期間）が必須',
+          '実績訴求は事実・実例がある場合のみ',
+        ],
+      },
+      {
+        heading: '導線・CTAチェック',
+        paragraphs: ['CTAの設計を確認します。'],
+        bullets: [
+          '主CTAが1つに絞れているか（二段構えなら副CTAは1行だけ）',
+          '「完全無料・勧誘なし」を明記しているか',
+          'リンク・ダミーURLが実URLに置き換わっているか',
+        ],
+      },
+      {
+        heading: 'フォーマットチェック',
+        paragraphs: ['媒体ごとの制約を確認します。'],
+        bullets: [
+          'LINEあいさつ文: 全角500文字以内（分割は最大5通）',
+          'スマホで一瞬で読めるか（1行を短く・改行で視線誘導）',
+          'ハッシュタグの個数と関連性',
+        ],
+      },
+      {
+        heading: '最終確認',
+        paragraphs: ['公開前の最後のステップです。'],
+        bullets: ['誤字脱字・固有名詞・数字の正確性', 'トンマナ統一', '社内レビューの承認'],
+      },
+    ],
     marketing: [
       {
         heading: '戦略サマリー',
@@ -921,6 +975,10 @@ const SUMMARIZE_STRUCTURES: Record<string, { headings: string[]; intro: string[]
 
 /** 長文コンテンツをスキル構造に沿ってドキュメントセクションに要約 */
 export function summarizeContentToDoc(skillId: string, content: string): DocSkillResult[] {
+  // 公開前チェックは要約ではなく文面監査を行う
+  if (skillId === 'audit') {
+    return buildAuditReport(content)
+  }
   const lines = parseLines(content)
   const structure = SUMMARIZE_STRUCTURES[skillId] ?? SUMMARIZE_STRUCTURES['free']
   const sectionCount = structure.headings.length
