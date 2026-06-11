@@ -2,9 +2,9 @@
 name: gig-hunt
 description: |
   クラウドワークス・ランサーズ・ココナラでの案件探しから受注までを支援するワークフロー
-  （検索設計 → 案件の目利き・地雷判定 → 応募文/出品文作成 → 結果記録）。
+  （検索設計 → 案件の目利き・地雷判定 → 応募文/出品文作成 → リサーチレポートPDF → 結果記録）。
   「案件探して」「クラウドワークス」「ココナラ」「ランサーズ」「応募文」「提案文」
-  「出品ページ」「この案件どう思う」と言われたときに使用。
+  「出品ページ」「この案件どう思う」「案件リサーチをPDFに」と言われたときに使用。
 ---
 
 # 案件ハンティング（クラウドソーシング）
@@ -50,7 +50,19 @@ LP・Webサイト制作 / SNS運用・コンテンツ制作 / AI・Web開発の�
 冒頭は必ず案件固有の内容（テンプレ使い回しはクライアントに見抜かれる）。
 納期・金額・修正回数を明記し、最後に質問を1つ入れて返信率を上げる。
 
-### Step 4: 記録・振り返り（メモリ）
+### Step 4: リサーチレポートのPDF納品
+
+リサーチ・目利きの結果を `assets/research-report-template.md` の形式でまとめ、
+`scripts/md_to_pdf.py` でPDF化して納品する（必要ならドライブにもアップロード）。
+
+```
+pip3 install reportlab   # 初回のみ
+python3 .claude/skills/gig-hunt/scripts/md_to_pdf.py report.md report.pdf
+```
+
+相場の調査は `info-research` の基準（出典・調査日明記）に従う。
+
+### Step 5: 記録・振り返り（メモリ）
 
 応募した案件・結果を `logs/pipeline.md` に追記する。
 次回実行時は前回ログを読み、返信率・受注率から応募文と単価設定を調整する。
@@ -72,3 +84,5 @@ LP・Webサイト制作 / SNS運用・コンテンツ制作 / AI・Web開発の�
 - ジャンル別相場・手数料・手取り早見表 → `references/market-rates.md`
 - 地雷案件チェックリスト → `references/red-flags.md`
 - 応募文・出品文・プロフィールの型 → `assets/proposal-template.md`
+- リサーチレポートの型 → `assets/research-report-template.md`
+- Markdown→日本語PDF変換 → `scripts/md_to_pdf.py`（reportlab・内蔵CIDフォント使用）
