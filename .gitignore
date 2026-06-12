@@ -40,8 +40,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# claude
-.claude/
+# claude — track shared config (settings.json, skills); ignore local-only files
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+.claude/settings.local.json
 
 # eslint
 eslint-output.json
