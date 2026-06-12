@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "k=\"$CLAUDE_PROJECT_DIR/.claude/skills/lessons/knowledge\"; [ -d \"$k\" ] && cat \"$k\"/*.md 2>/dev/null | jq -Rs '{hookSpecificOutput:{hookEventName:\"SessionStart\",additionalContext:(\"【lessons】過去セッションの学び（.claude/skills/lessons/knowledge/ より自動読込）:\\n\\n\"+.)}}' || true",
+            "timeout": 10,
+            "statusMessage": "過去の学びを読み込み中..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "t=/tmp/.claude-lessons-stop; now=$(date +%s); last=$(cat \"$t\" 2>/dev/null || echo 0); if [ $((now-last)) -gt 3600 ]; then echo \"$now\" > \"$t\"; echo '{\"decision\":\"block\",\"reason\":\"（lessons 自動リマインド・1時間に1回）ここまでの作業で保存すべき学び（環境のクセ／失敗と回避策／業務知識／手順の改善）があれば、lessons スキルのルーティング規則に従って knowledge/ または該当スキルに保存しコミットしてから終了してください。保存すべき学びがなければ、その旨を一言述べてそのまま終了して構いません。\"}'; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
