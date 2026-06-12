@@ -1,6 +1,6 @@
 ---
 name: triad-workflow
-description: Three-tier dynamic orchestration — Fable (this session) as apex orchestrator, Opus subagents for reasoning-heavy phases (planning, architecture, hard debugging, review), Sonnet subagents for execution (implementation, edits, tests). Use for large features, multi-phase tasks, big refactors, or whenever the user asks for the triad / Fable-Opus-Sonnet workflow.
+description: Three-tier dynamic orchestration — Fable (this session) as apex orchestrator, Opus subagents for reasoning-heavy phases (planning, architecture, hard debugging, review), Sonnet subagents for execution (implementation, edits, tests). ONLY runs when the current session model is Fable 5; on any other model, do not orchestrate — tell the user to switch with /model. Use for large features, multi-phase tasks, big refactors, or whenever the user asks for the triad / Fable-Opus-Sonnet workflow.
 ---
 
 # Triad Workflow — Fable commands, Opus strategizes, Sonnet executes
@@ -9,17 +9,18 @@ Three-tier dynamic orchestration for large or multi-phase tasks. The main
 session (Fable 5, max reasoning) is the apex orchestrator. It never grinds
 through bulk work itself — it decomposes, delegates, supervises, and decides.
 
-## Prerequisites
+## Gate — Fable 5 only
 
-This skill assumes the session is configured as:
+**Before doing anything else, check which model this session is running on.**
 
-1. **Model: Fable 5** (`claude-fable-5[1m]`) — set via `/model` or the
-   project's `.claude/settings.json`.
-2. **Reasoning effort: Max** — select in the `/model` picker. Fable's thinking
-   is always on; Max effort gives the orchestrator the deepest deliberation.
+- Running on **Fable 5** (model ID starts with `claude-fable-5`) → proceed.
+- Running on **any other model** (Opus, Sonnet, Haiku, …) → **stop. Do not run
+  this workflow.** Tell the user this skill is Fable-only and that they can
+  switch with `/model` (Fable 5, reasoning effort Max recommended), then handle
+  their request normally without the triad orchestration.
 
-If the session is not on Fable, say so and continue with the same role split —
-the workflow still works, only the apex is weaker.
+This skill must never change the session's model or settings itself — the
+model choice belongs to the user.
 
 ## Roles
 
