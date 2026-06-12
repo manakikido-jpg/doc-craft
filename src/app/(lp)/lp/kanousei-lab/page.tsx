@@ -3,19 +3,15 @@ import { LpNav } from './components/LpNav'
 import { Hero } from './components/Hero'
 import { LpFooter } from './components/LpFooter'
 import { StickyCta, StickyCtaSentinel } from './components/StickyCta'
-
-// ── Package B sections (to be inserted when implemented) ──
-// import { PainPoints } from './components/PainPoints'
-// import { FlowTimeline } from './components/FlowTimeline'
-// import { ReasonsBand } from './components/ReasonsBand'
-// import { Voices } from './components/Voices'
-// import { Faq } from './components/Faq'
-
-// ── Package C sections (to be inserted when implemented) ──
-// import { DiagnosisTeaser } from './components/DiagnosisTeaser'
-// import { TypesTeaser } from './components/TypesTeaser'
-// import { FinalCta } from './components/FinalCta'
-// import { Analytics } from './components/Analytics'
+import { PainPoints } from './components/PainPoints'
+import { DiagnosisTeaser } from './components/DiagnosisTeaser'
+import { FlowTimeline } from './components/FlowTimeline'
+import { TypesTeaser } from './components/TypesTeaser'
+import { ReasonsBand } from './components/ReasonsBand'
+import { Voices } from './components/Voices'
+import { Faq } from './components/Faq'
+import { FinalCta } from './components/FinalCta'
+import { Analytics } from './components/Analytics'
 
 /**
  * Metadata — plan §4
@@ -43,16 +39,16 @@ export const metadata: Metadata = {
 /**
  * /lp/kanousei-lab — 可能性ラボ ランディングページ
  *
- * Section order (final, including B & C packages):
- *   Nav / Hero / PainPoints / DiagnosisTeaser / FlowTimeline /
- *   TypesTeaser / ReasonsBand / Voices / Faq / FinalCta / Footer / StickyCta
- *
- * Currently live: Nav, Hero, Footer, StickyCta (Package A).
- * B & C packages will be uncommented above and inserted below when ready.
+ * Section order:
+ *   Analytics / Nav / Hero / StickyCtaSentinel / PainPoints / DiagnosisTeaser /
+ *   FlowTimeline / TypesTeaser / ReasonsBand / Voices / Faq / FinalCta / Footer / StickyCta
  */
 export default function KanouseiLabPage() {
   return (
     <>
+      {/* Analytics — env-gated, renders nothing when env vars are absent */}
+      <Analytics />
+
       {/* S0 — Navigation */}
       <LpNav />
 
@@ -62,38 +58,35 @@ export default function KanouseiLabPage() {
       {/* Sentinel: StickyCta watches this to know when hero has scrolled past */}
       <StickyCtaSentinel />
 
-      {/* ── S2 PainPoints (Package B) ── */}
-      {/* <PainPoints /> */}
+      {/* S2 — PainPoints */}
+      <PainPoints />
 
-      {/* ── S3 DiagnosisTeaser (Package C) ── */}
-      {/* <DiagnosisTeaser /> */}
+      {/* S3 — DiagnosisTeaser */}
+      <DiagnosisTeaser />
 
-      {/* ── S4 FlowTimeline (Package B) ── */}
-      {/* <FlowTimeline /> */}
+      {/* S4 — FlowTimeline */}
+      <FlowTimeline />
 
-      {/* ── S5 TypesTeaser (Package C) ── */}
-      {/* <TypesTeaser /> */}
+      {/* S5 — TypesTeaser */}
+      <TypesTeaser />
 
-      {/* ── S6 ReasonsBand (Package B) ── */}
-      {/* <ReasonsBand /> */}
+      {/* S6 — ReasonsBand */}
+      <ReasonsBand />
 
-      {/* ── S7 Voices (Package B) ── */}
-      {/* <Voices /> */}
+      {/* S7 — Voices */}
+      <Voices />
 
-      {/* ── S8 Faq (Package B) ── */}
-      {/* <Faq /> */}
+      {/* S8 — Faq */}
+      <Faq />
 
-      {/* ── S9 FinalCta (Package C) ── */}
-      {/* <FinalCta /> */}
+      {/* S9 — FinalCta */}
+      <FinalCta />
 
       {/* S10 — Footer */}
       <LpFooter />
 
       {/* S11 — Sticky CTA (client, IntersectionObserver-gated) */}
       <StickyCta />
-
-      {/* ── Analytics (Package C) ── */}
-      {/* <Analytics /> */}
     </>
   )
 }
