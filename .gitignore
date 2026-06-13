@@ -40,8 +40,13 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# claude
-.claude/
+# claude（ローカル設定は除外、共有スキル・プロジェクト設定はコミット対象）
+.claude/*
+!.claude/skills/
+!.claude/settings.json
+# スキルのユーザー固有メモリ（config.json・logs）は各自ローカル限定
+.claude/skills/*/config.json
+.claude/skills/*/logs/
 
 # eslint
 eslint-output.json
