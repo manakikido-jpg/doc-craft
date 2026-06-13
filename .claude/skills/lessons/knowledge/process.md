@@ -21,3 +21,12 @@
 - スキルは SKILL.md（手順＋Gotchas）＋ references/（変化する知識）＋
   assets/（テンプレート）＋ scripts/（実行コード）の4点構成。
   ユーザー固有メモリは config.json / logs/（gitignore 対象）に分離する。
+
+## DocCraft AI スキル追加時のチェックリスト
+
+- **2026-06-13**: `src/lib/ai-skills.ts` には更新箇所が3つある。抜け漏れに注意。
+  1. `AI_SKILLS` 配列にエントリ追加（`id` / `name` / `icon` / `description` / `type`）
+  2. `type: 'both'` または `'slides'` のスキルは `buildSkillSlides()` の `templates` に6枚分追加
+  3. `type: 'both'` または `'doc'` のスキルは `buildSkillDocSections()` の `templates` に追加
+  4. `SUMMARIZE_STRUCTURES` にエントリ追加（長文入力時の要約構造。全スキルに推奨）
+  - 型チェック: `npx tsc --noEmit` でエラーなしを確認してからコミット
