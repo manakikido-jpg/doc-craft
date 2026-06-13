@@ -6,17 +6,35 @@
  */
 export function TypesTeaser() {
   /** Type-name chips — representative examples from 16 types */
-  const typeChips = [
-    '未来の指揮官',
-    '人を灯す案内人',
-    '…など全16タイプ',
-  ]
+  const typeChips = ['未来の指揮官', '人を灯す案内人', '…など全16タイプ']
 
   /** 4-axis compass label mapping: cardinal direction → axis label */
   const axes = [
     { dir: 'N', label: '創造', x: 100, y: 12, textX: 100, textY: 8, tickX1: 100, tickY1: 26, tickX2: 100, tickY2: 38 },
-    { dir: 'S', label: '実行', x: 100, y: 188, textX: 100, textY: 196, tickX1: 100, tickY1: 162, tickX2: 100, tickY2: 174 },
-    { dir: 'E', label: '対人', x: 188, y: 100, textX: 196, textY: 104, tickX1: 162, tickY1: 100, tickX2: 174, tickY2: 100 },
+    {
+      dir: 'S',
+      label: '実行',
+      x: 100,
+      y: 188,
+      textX: 100,
+      textY: 196,
+      tickX1: 100,
+      tickY1: 162,
+      tickX2: 100,
+      tickY2: 174,
+    },
+    {
+      dir: 'E',
+      label: '対人',
+      x: 188,
+      y: 100,
+      textX: 196,
+      textY: 104,
+      tickX1: 162,
+      tickY1: 100,
+      tickX2: 174,
+      tickY2: 100,
+    },
     { dir: 'W', label: '内省', x: 12, y: 100, textX: 4, textY: 104, tickX1: 26, tickY1: 100, tickX2: 38, tickY2: 100 },
   ]
 
@@ -26,10 +44,7 @@ export function TypesTeaser() {
         <div className="flex flex-col items-center gap-10 md:gap-14">
           {/* Heading */}
           <div className="text-center">
-            <h2
-              id="types-heading"
-              className="lp-h2 mb-4"
-            >
+            <h2 id="types-heading" className="lp-h2 mb-4">
               あなたは16タイプのうち、どの「キャリアの星」？
             </h2>
             <p
@@ -41,10 +56,7 @@ export function TypesTeaser() {
           </div>
 
           {/* Compass figure — 4 axes as cardinal directions */}
-          <div
-            className="flex flex-col items-center gap-8"
-            aria-hidden="true"
-          >
+          <div className="flex flex-col items-center gap-8" aria-hidden="true">
             {/* Compass SVG with 4-axis labels */}
             <svg
               viewBox="0 0 200 200"
@@ -70,15 +82,7 @@ export function TypesTeaser() {
               <circle cx="100" cy="100" r="90" fill="url(#types-glow)" />
 
               {/* Outer ring (dashed) */}
-              <circle
-                cx="100"
-                cy="100"
-                r="78"
-                fill="none"
-                stroke="#e4daca"
-                strokeWidth="0.75"
-                strokeDasharray="3 5"
-              />
+              <circle cx="100" cy="100" r="78" fill="none" stroke="#e4daca" strokeWidth="0.75" strokeDasharray="3 5" />
 
               {/* Inner ring */}
               <circle cx="100" cy="100" r="55" fill="none" stroke="#e4daca" strokeWidth="0.5" opacity="0.5" />
@@ -146,12 +150,7 @@ export function TypesTeaser() {
               })}
 
               {/* North needle (terracotta — the lit direction) */}
-              <polygon
-                points="100,36 96,100 100,92 104,100"
-                fill="#e0742f"
-                opacity="0.85"
-                filter="url(#types-light)"
-              />
+              <polygon points="100,36 96,100 100,92 104,100" fill="#e0742f" opacity="0.85" filter="url(#types-light)" />
 
               {/* South needle */}
               <polygon points="100,164 97.5,100 100,108 102.5,100" fill="#5c544b" opacity="0.35" />
@@ -192,10 +191,7 @@ export function TypesTeaser() {
           </div>
 
           {/* Type-name chips */}
-          <div
-            className="flex flex-wrap justify-center gap-3"
-            aria-label="タイプ例"
-          >
+          <div className="flex flex-wrap justify-center gap-3" aria-label="タイプ例">
             {typeChips.map((chip, i) => (
               <span
                 key={chip}
@@ -213,10 +209,7 @@ export function TypesTeaser() {
           </div>
 
           {/* Supplementary note */}
-          <p
-            className="text-sm text-center"
-            style={{ color: 'var(--lp-ink-soft)' }}
-          >
+          <p className="text-sm text-center" style={{ color: 'var(--lp-ink-soft)' }}>
             診断を受けた方には、あなたのタイプもあわせてお伝えします。
           </p>
         </div>

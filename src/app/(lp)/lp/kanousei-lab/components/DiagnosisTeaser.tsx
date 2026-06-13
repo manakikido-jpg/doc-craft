@@ -13,15 +13,9 @@ export function DiagnosisTeaser() {
     <section className="lp-section lp-section-alt" aria-labelledby="diagnosis-heading">
       <div className="lp-container">
         {/* Central teaser card */}
-        <div
-          className="lp-card mx-auto max-w-3xl"
-          style={{ padding: '2.5rem 2rem', textAlign: 'center' }}
-        >
+        <div className="lp-card mx-auto max-w-3xl" style={{ padding: '2.5rem 2rem', textAlign: 'center' }}>
           {/* Compass SVG + 3問 emphasis — decorative motif */}
-          <div
-            className="flex flex-col items-center gap-4 mb-8"
-            aria-hidden="true"
-          >
+          <div className="flex flex-col items-center gap-4 mb-8" aria-hidden="true">
             {/* Compact compass with the single warm light */}
             <svg
               viewBox="0 0 200 200"
@@ -47,15 +41,7 @@ export function DiagnosisTeaser() {
               <circle cx="100" cy="96" r="80" fill="url(#diag-glow)" />
 
               {/* Outer ring */}
-              <circle
-                cx="100"
-                cy="100"
-                r="74"
-                fill="none"
-                stroke="#e4daca"
-                strokeWidth="0.75"
-                strokeDasharray="3 5"
-              />
+              <circle cx="100" cy="100" r="74" fill="none" stroke="#e4daca" strokeWidth="0.75" strokeDasharray="3 5" />
 
               {/* Inner ring */}
               <circle cx="100" cy="100" r="58" fill="none" stroke="#e4daca" strokeWidth="0.5" opacity="0.6" />
@@ -67,12 +53,7 @@ export function DiagnosisTeaser() {
               <line x1="27" y1="100" x2="40" y2="100" stroke="#e4daca" strokeWidth="1" strokeLinecap="round" />
 
               {/* North needle (terracotta) */}
-              <polygon
-                points="100,36 95,100 100,92 105,100"
-                fill="#e0742f"
-                opacity="0.9"
-                filter="url(#diag-light)"
-              />
+              <polygon points="100,36 95,100 100,92 105,100" fill="#e0742f" opacity="0.9" filter="url(#diag-light)" />
 
               {/* South needle */}
               <polygon points="100,164 97,100 100,108 103,100" fill="#5c544b" opacity="0.4" />
@@ -86,9 +67,36 @@ export function DiagnosisTeaser() {
               <circle cx="100" cy="41" r="2.5" fill="#fff" opacity="0.9" />
 
               {/* Radiating lines from north light */}
-              <line x1="100" y1="31" x2="100" y2="24" stroke="#e0742f" strokeWidth="0.8" strokeLinecap="round" opacity="0.5" />
-              <line x1="107" y1="34" x2="112" y2="29" stroke="#e0742f" strokeWidth="0.8" strokeLinecap="round" opacity="0.4" />
-              <line x1="93" y1="34" x2="88" y2="29" stroke="#e0742f" strokeWidth="0.8" strokeLinecap="round" opacity="0.4" />
+              <line
+                x1="100"
+                y1="31"
+                x2="100"
+                y2="24"
+                stroke="#e0742f"
+                strokeWidth="0.8"
+                strokeLinecap="round"
+                opacity="0.5"
+              />
+              <line
+                x1="107"
+                y1="34"
+                x2="112"
+                y2="29"
+                stroke="#e0742f"
+                strokeWidth="0.8"
+                strokeLinecap="round"
+                opacity="0.4"
+              />
+              <line
+                x1="93"
+                y1="34"
+                x2="88"
+                y2="29"
+                stroke="#e0742f"
+                strokeWidth="0.8"
+                strokeLinecap="round"
+                opacity="0.4"
+              />
             </svg>
 
             {/* Large 「3問」 emphasis */}
@@ -118,10 +126,7 @@ export function DiagnosisTeaser() {
           </div>
 
           {/* Heading — h2 */}
-          <h2
-            id="diagnosis-heading"
-            className="lp-h2 mb-4"
-          >
+          <h2 id="diagnosis-heading" className="lp-h2 mb-4">
             まずは、たった3問の「市場価値診断」から。
           </h2>
 

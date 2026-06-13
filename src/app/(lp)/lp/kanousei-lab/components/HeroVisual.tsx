@@ -60,15 +60,7 @@ export function HeroVisual() {
         <circle cx="200" cy="200" r="185" fill="url(#paper-ring)" />
 
         {/* ── Outer compass ring ── */}
-        <circle
-          cx="200"
-          cy="200"
-          r="148"
-          fill="none"
-          stroke="url(#ring-grad)"
-          strokeWidth="1"
-          strokeDasharray="4 6"
-        />
+        <circle cx="200" cy="200" r="148" fill="none" stroke="url(#ring-grad)" strokeWidth="1" strokeDasharray="4 6" />
 
         {/* ── Secondary ring ── */}
         <circle cx="200" cy="200" r="120" fill="none" stroke="var(--lp-line)" strokeWidth="0.75" opacity="0.6" />
@@ -193,7 +185,16 @@ export function HeroVisual() {
         </text>
 
         {/* ── Subtle "道" path line descending from center ── */}
-        <line x1="200" y1="210" x2="200" y2="320" stroke="var(--lp-line)" strokeWidth="1" strokeDasharray="2 6" opacity="0.5" />
+        <line
+          x1="200"
+          y1="210"
+          x2="200"
+          y2="320"
+          stroke="var(--lp-line)"
+          strokeWidth="1"
+          strokeDasharray="2 6"
+          opacity="0.5"
+        />
       </svg>
     </div>
   )

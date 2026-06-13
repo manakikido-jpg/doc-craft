@@ -1,9 +1,5 @@
 import { CtaButton } from './CtaButton'
-import {
-  CTA_PRIMARY_LABEL,
-  CTA_SECONDARY_INLINE_LABEL,
-  CTA_MICROCOPY_FINAL,
-} from '../copy'
+import { CTA_PRIMARY_LABEL, CTA_SECONDARY_INLINE_LABEL, CTA_MICROCOPY_FINAL } from '../copy'
 
 /**
  * S9 — FinalCta
@@ -79,14 +75,7 @@ export function FinalCta() {
           <rect x="0" y="0" width="800" height="600" fill="url(#final-glow-outer)" />
 
           {/* The single warm light — now fully lit, large and luminous */}
-          <circle
-            cx="400"
-            cy="300"
-            r="48"
-            fill="#e0742f"
-            opacity="0.15"
-            filter="url(#final-burst)"
-          />
+          <circle cx="400" cy="300" r="48" fill="#e0742f" opacity="0.15" filter="url(#final-burst)" />
           <circle cx="400" cy="300" r="24" fill="#e0742f" opacity="0.20" filter="url(#final-burst)" />
           <circle cx="400" cy="300" r="10" fill="#e0742f" opacity="0.40" />
           <circle cx="400" cy="300" r="4" fill="#fff" opacity="0.70" />
@@ -106,7 +95,7 @@ export function FinalCta() {
                 stroke="#e0742f"
                 strokeWidth={i % 3 === 0 ? 1.2 : 0.6}
                 strokeLinecap="round"
-                opacity={i % 3 === 0 ? 0.30 : 0.15}
+                opacity={i % 3 === 0 ? 0.3 : 0.15}
               />
             )
           })}
@@ -129,11 +118,7 @@ export function FinalCta() {
       <div className="lp-container" style={{ position: 'relative', zIndex: 1 }}>
         <div className="flex flex-col items-center gap-8 text-center">
           {/* H2 */}
-          <h2
-            id="final-cta-heading"
-            className="lp-h2"
-            style={{ maxWidth: '34rem', margin: '0 auto' }}
-          >
+          <h2 id="final-cta-heading" className="lp-h2" style={{ maxWidth: '34rem', margin: '0 auto' }}>
             あなたの可能性は、まだ言葉になっていないだけ。
           </h2>
 
@@ -162,10 +147,7 @@ export function FinalCta() {
           </div>
 
           {/* SECONDARY text link — subdued */}
-          <CtaButton
-            variant="secondary"
-            className="text-sm"
-          >
+          <CtaButton variant="secondary" className="text-sm">
             {CTA_SECONDARY_INLINE_LABEL}
           </CtaButton>
         </div>

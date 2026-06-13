@@ -88,11 +88,9 @@ export function FlowTimeline() {
                   >
                     {/* Left content slot (md+: even steps) */}
                     <div
-                      className={[
-                        'hidden md:block',
-                        isEven ? 'text-right pr-8' : '',
-                        !isEven ? 'invisible' : '',
-                      ].join(' ')}
+                      className={['hidden md:block', isEven ? 'text-right pr-8' : '', !isEven ? 'invisible' : ''].join(
+                        ' ',
+                      )}
                     >
                       {isEven && <StepContent step={step} align="right" stepIndex={i} />}
                     </div>

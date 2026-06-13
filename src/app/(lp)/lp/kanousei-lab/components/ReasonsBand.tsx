@@ -18,8 +18,23 @@ const REASONS: Reason[] = [
     icon: (
       // Graduation cap / credential icon
       <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <rect x="4" y="14" width="24" height="12" rx="3" fill="rgba(250,246,239,0.15)" stroke="rgba(250,246,239,0.6)" strokeWidth="1.5" />
-        <path d="M16 4L28 11L16 18L4 11L16 4Z" fill="rgba(250,246,239,0.15)" stroke="rgba(250,246,239,0.6)" strokeWidth="1.5" strokeLinejoin="round" />
+        <rect
+          x="4"
+          y="14"
+          width="24"
+          height="12"
+          rx="3"
+          fill="rgba(250,246,239,0.15)"
+          stroke="rgba(250,246,239,0.6)"
+          strokeWidth="1.5"
+        />
+        <path
+          d="M16 4L28 11L16 18L4 11L16 4Z"
+          fill="rgba(250,246,239,0.15)"
+          stroke="rgba(250,246,239,0.6)"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
         <circle cx="16" cy="11" r="2" fill="var(--lp-glow)" />
         <line x1="28" y1="11" x2="28" y2="20" stroke="rgba(250,246,239,0.4)" strokeWidth="1.5" strokeLinecap="round" />
         <circle cx="28" cy="21" r="2" fill="rgba(250,246,239,0.5)" />
@@ -54,10 +69,28 @@ const REASONS: Reason[] = [
     icon: (
       // Monitor + chat bubble icon
       <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <rect x="4" y="6" width="18" height="13" rx="2.5" fill="rgba(250,246,239,0.15)" stroke="rgba(250,246,239,0.6)" strokeWidth="1.5" />
+        <rect
+          x="4"
+          y="6"
+          width="18"
+          height="13"
+          rx="2.5"
+          fill="rgba(250,246,239,0.15)"
+          stroke="rgba(250,246,239,0.6)"
+          strokeWidth="1.5"
+        />
         <line x1="13" y1="19" x2="13" y2="23" stroke="rgba(250,246,239,0.5)" strokeWidth="1.5" strokeLinecap="round" />
         <line x1="9" y1="23" x2="17" y2="23" stroke="rgba(250,246,239,0.5)" strokeWidth="1.5" strokeLinecap="round" />
-        <rect x="20" y="14" width="8" height="7" rx="2" fill="rgba(250,246,239,0.15)" stroke="rgba(224,116,47,0.7)" strokeWidth="1.5" />
+        <rect
+          x="20"
+          y="14"
+          width="8"
+          height="7"
+          rx="2"
+          fill="rgba(250,246,239,0.15)"
+          stroke="rgba(224,116,47,0.7)"
+          strokeWidth="1.5"
+        />
         <circle cx="22" cy="17.5" r="1" fill="var(--lp-glow)" />
         <circle cx="24" cy="17.5" r="1" fill="var(--lp-glow)" />
         <circle cx="26" cy="17.5" r="1" fill="var(--lp-glow)" />

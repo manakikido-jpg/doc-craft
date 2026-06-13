@@ -141,7 +141,10 @@
   border-radius: 0.75rem; /* rounded-xl */
   text-decoration: none;
   box-shadow: var(--lp-shadow-cta);
-  transition: background-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    transform 0.15s ease,
+    box-shadow 0.2s ease;
   font-family: var(--lp-font-sans);
 }
 

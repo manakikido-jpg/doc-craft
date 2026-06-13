@@ -12,10 +12,7 @@ export function LpNav() {
   return (
     <header className="lp-nav" role="banner">
       <div className="lp-container">
-        <nav
-          className="flex items-center justify-between py-3 md:py-4"
-          aria-label="サイトナビゲーション"
-        >
+        <nav className="flex items-center justify-between py-3 md:py-4" aria-label="サイトナビゲーション">
           {/* Logo */}
           <a
             href="/lp/kanousei-lab"

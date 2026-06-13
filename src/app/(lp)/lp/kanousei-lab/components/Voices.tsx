@@ -67,7 +67,10 @@ export function Voices() {
               </blockquote>
 
               {/* Profile + result chip row */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t" style={{ borderColor: 'var(--lp-line)' }}>
+              <div
+                className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t"
+                style={{ borderColor: 'var(--lp-line)' }}
+              >
                 {/* Profile */}
                 <p className="text-sm font-medium" style={{ color: 'var(--lp-ink-soft)' }}>
                   {profile}
@@ -84,7 +87,13 @@ export function Voices() {
                 >
                   {/* Small upward arrow icon */}
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                    <path d="M5 8V2M5 2L2 5M5 2L8 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path
+                      d="M5 8V2M5 2L2 5M5 2L8 5"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                   {result}
                 </span>

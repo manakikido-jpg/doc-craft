@@ -43,17 +43,9 @@ export function Faq() {
         </h2>
 
         {/* Accordion list — native <details>/<summary>, no JS */}
-        <div
-          className="max-w-2xl mx-auto"
-          role="list"
-          aria-label="よくあるご質問"
-        >
+        <div className="max-w-2xl mx-auto" role="list" aria-label="よくあるご質問">
           {FAQ_ITEMS.map(({ question, answer }, i) => (
-            <details
-              key={i}
-              className="lp-faq-item"
-              role="listitem"
-            >
+            <details key={i} className="lp-faq-item" role="listitem">
               <summary>
                 <span className="text-base md:text-lg">{question}</span>
               </summary>

@@ -47,11 +47,7 @@ export function CtaButton({ variant, children, eventName, href, className = '', 
         onClick={handleClick}
         target="_blank"
         rel="noopener noreferrer"
-        className={[
-          'lp-btn-primary',
-          size === 'lg' ? 'text-lg px-8 py-5 rounded-2xl' : 'text-base',
-          className,
-        ]
+        className={['lp-btn-primary', size === 'lg' ? 'text-lg px-8 py-5 rounded-2xl' : 'text-base', className]
           .filter(Boolean)
           .join(' ')}
       >
