@@ -123,6 +123,13 @@ export const AI_SKILLS: AISkill[] = [
     description: 'クライアント向け業務提案書・事業計画書・パートナー提案',
     type: 'both',
   },
+  {
+    id: 'product-research',
+    name: '開発前リサーチ',
+    icon: 'search',
+    description: '競合分析・ニーズ調査・市場規模見積・Go/No-go判定を一気通貫で実施',
+    type: 'doc',
+  },
   { id: 'meeting', name: '会議議事録', icon: 'notebookPen', description: '会議の記録・決定事項まとめ', type: 'doc' },
   { id: 'techspec', name: '技術仕様書', icon: 'cog', description: '技術設計・API仕様・要件定義', type: 'doc' },
 ]
@@ -1113,6 +1120,59 @@ export function buildSkillDocSections(skillId: string, topic: string): DocSkillR
         ],
       },
     ],
+    'product-research': [
+      {
+        heading: '調査概要',
+        paragraphs: [`「${t}」の開発前リサーチです。競合分析・ニーズ調査・市場規模見積・Go/No-go判定を実施します。`],
+        bullets: [
+          '調査目的: Go/No-go判断 / 差別化軸の発見 / 価格帯の確認',
+          'ターゲット（仮説）: [年代・職種・課題]',
+          '調査スコープ: 競合3〜5社 + ニーズ定量 + 市場規模推定',
+        ],
+      },
+      {
+        heading: '競合分析',
+        paragraphs: ['直接競合3〜5社を機能・価格・ポジショニングで比較します。'],
+        bullets: [
+          '直接競合: [競合A] / [競合B] / [競合C]',
+          '価格帯: [最低値]〜[最高値]円（中央値: [XX]円）',
+          '競合の共通の弱点: [〇〇が対応できていない]',
+          '空白領域（差別化機会）: [〇〇 × 〇〇の組み合わせが未対応]',
+        ],
+      },
+      {
+        heading: 'ニーズ調査',
+        paragraphs: ['検索スニペットとJTBD分析でターゲットの課題を整理します。'],
+        bullets: [
+          '顕在ニーズ: [検索から確認できた悩み・困りごと]',
+          'JTBD（機能的）: [ユーザーが達成したいこと]',
+          'JTBD（感情的）: [ユーザーが得たい感情・安心感]',
+          '現在の代替手段と不満: [代替手段] → 不満: [内容]',
+        ],
+      },
+      {
+        heading: '市場規模見積（TAM/SAM/SOM）',
+        paragraphs: ['ボトムアップ推定で市場の大きさを把握します。'],
+        bullets: [
+          'ターゲット母数: 〇〇万人（出典: [統計]）',
+          '購入率仮説: 〇〇%（類似サービス参考）',
+          'SAM（月次）: 〇〇万円（母数 × 購入率 × 平均単価）',
+          'SOM目標（月次）: 〇〇万円（SAM × 〇〇%シェア）',
+        ],
+      },
+      {
+        heading: 'Go/No-go 判定・推奨アクション',
+        paragraphs: ['6項目チェックリストで開発判断を下します。'],
+        bullets: [
+          '市場の存在: ○/×',
+          '市場規模（SOM月10万円以上）: ○/×',
+          '差別化の余地: ○/×',
+          '実現可能性（MVP 3ヶ月以内）: ○/×',
+          '景表法リスク（断定なし設計可能）: ○/×',
+          '判定: [ Go / 条件付きGo / No-go ] — 推奨アクション: [次のステップ]',
+        ],
+      },
+    ],
     'biz-proposal': [
       {
         heading: '提案概要',
@@ -1313,6 +1373,16 @@ const SUMMARIZE_STRUCTURES: Record<string, { headings: string[]; intro: string[]
       '理性訴求コピーの内容です。',
       '行動訴求コピーの内容です。',
       '公開前の確認事項です。',
+    ],
+  },
+  'product-research': {
+    headings: ['調査概要', '競合分析', 'ニーズ調査', '市場規模見積', 'Go/No-go判定'],
+    intro: [
+      '調査の概要を整理しました。',
+      '競合分析の内容です。',
+      'ニーズ調査の内容です。',
+      '市場規模の見積です。',
+      'Go/No-go判定と推奨アクションです。',
     ],
   },
   'biz-proposal': {
