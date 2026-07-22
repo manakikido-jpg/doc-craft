@@ -1,0 +1,10 @@
+{
+  "pack": {
+    "pack_format": 61,
+    "supported_formats": {
+      "min_inclusive": 61,
+      "max_inclusive": 9999
+    },
+    "description": "MythGear — 八神装備パック (give関数とレシピ)"
+  }
+}

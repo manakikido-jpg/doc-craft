@@ -1,0 +1,3 @@
+# 蛾神の羽『モスヴェール』
+give @s minecraft:elytra[minecraft:item_name="蛾神の羽『モスヴェール』",minecraft:rarity="epic",minecraft:lore=["《八神装備・伍》","燐粉きらめく夜蛾の女神の翅。","軽やかに、どこまでも速く。"],minecraft:item_model="mythgear:moth_wings",minecraft:equippable={slot:"chest",asset_id:"mythgear:moth_wings",equip_sound:"minecraft:item.armor.equip_elytra"},minecraft:attribute_modifiers=[{id:"mythgear:moth_wings/armor",type:"minecraft:armor",amount:2,operation:"add_value",slot:"chest"},{id:"mythgear:moth_wings/speed",type:"minecraft:movement_speed",amount:0.1,operation:"add_multiplied_total",slot:"chest"}]]
+tellraw @s [{"text":"[MythGear] ","color":"gold"},{"text":"蛾神の羽『モスヴェール』","color":"light_purple"},{"text":" を入手しました。","color":"gray"}]

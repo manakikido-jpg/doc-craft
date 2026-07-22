@@ -1,0 +1,57 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "WWW",
+    "WHW",
+    " G "
+  ],
+  "key": {
+    "W": "minecraft:white_wool",
+    "H": "minecraft:leather_helmet",
+    "G": "minecraft:gold_ingot"
+  },
+  "result": {
+    "id": "minecraft:leather_helmet",
+    "count": 1,
+    "components": {
+      "minecraft:item_name": "月兎の頭巾『ルナミミ』",
+      "minecraft:rarity": "rare",
+      "minecraft:lore": [
+        "《八神装備・参》",
+        "月の兎神が編んだ純白の頭巾。",
+        "高所から跳んでも怖くない。"
+      ],
+      "minecraft:item_model": "mythgear:moon_rabbit_hood",
+      "minecraft:equippable": {
+        "slot": "head",
+        "asset_id": "mythgear:moon_rabbit_hood",
+        "equip_sound": "minecraft:item.armor.equip_leather"
+      },
+      "minecraft:attribute_modifiers": [
+        {
+          "id": "mythgear:moon_rabbit_hood/armor",
+          "type": "minecraft:armor",
+          "amount": 2,
+          "operation": "add_value",
+          "slot": "head"
+        },
+        {
+          "id": "mythgear:moon_rabbit_hood/safe_fall",
+          "type": "minecraft:safe_fall_distance",
+          "amount": 4,
+          "operation": "add_value",
+          "slot": "head"
+        },
+        {
+          "id": "mythgear:moon_rabbit_hood/jump",
+          "type": "minecraft:jump_strength",
+          "amount": 0.08,
+          "operation": "add_value",
+          "slot": "head"
+        }
+      ],
+      "minecraft:max_damage": 240
+    }
+  }
+}

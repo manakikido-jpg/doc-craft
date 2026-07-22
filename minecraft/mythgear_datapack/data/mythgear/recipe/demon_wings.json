@@ -1,0 +1,43 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    " A ",
+    "PEP",
+    " O "
+  ],
+  "key": {
+    "A": "minecraft:amethyst_shard",
+    "P": "minecraft:phantom_membrane",
+    "E": "minecraft:elytra",
+    "O": "minecraft:obsidian"
+  },
+  "result": {
+    "id": "minecraft:elytra",
+    "count": 1,
+    "components": {
+      "minecraft:item_name": "魔翼『ノクスウィング』",
+      "minecraft:rarity": "epic",
+      "minecraft:lore": [
+        "《八神装備・壱》",
+        "宵闇の魔女が背負う蝙蝠の翼。",
+        "身に着ければ夜空を滑空できる。"
+      ],
+      "minecraft:item_model": "mythgear:demon_wings",
+      "minecraft:equippable": {
+        "slot": "chest",
+        "asset_id": "mythgear:demon_wings",
+        "equip_sound": "minecraft:item.armor.equip_elytra"
+      },
+      "minecraft:attribute_modifiers": [
+        {
+          "id": "mythgear:demon_wings/armor",
+          "type": "minecraft:armor",
+          "amount": 3,
+          "operation": "add_value",
+          "slot": "chest"
+        }
+      ]
+    }
+  }
+}

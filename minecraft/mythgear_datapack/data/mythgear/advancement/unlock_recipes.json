@@ -1,0 +1,19 @@
+{
+  "criteria": {
+    "always": {
+      "trigger": "minecraft:tick"
+    }
+  },
+  "rewards": {
+    "recipes": [
+      "mythgear:demon_wings",
+      "mythgear:hero_greatsword",
+      "mythgear:moon_rabbit_hood",
+      "mythgear:golden_lasso",
+      "mythgear:moth_wings",
+      "mythgear:rose_robe",
+      "mythgear:sun_crown",
+      "mythgear:skull_staff"
+    ]
+  }
+}

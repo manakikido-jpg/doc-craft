@@ -1,0 +1,3 @@
+# 黄金の投げ縄『ソルレイド』
+give @s minecraft:lead[minecraft:item_name="黄金の投げ縄『ソルレイド』",minecraft:rarity="rare",minecraft:lore=["《八神装備・肆》","怪力の狩神が振り回した黄金の縄。","打った相手を大きく弾き飛ばす。"],minecraft:item_model="mythgear:golden_lasso",minecraft:attribute_modifiers=[{id:"mythgear:golden_lasso/knockback",type:"minecraft:attack_knockback",amount:2,operation:"add_value",slot:"mainhand"},{id:"mythgear:golden_lasso/damage",type:"minecraft:attack_damage",amount:2,operation:"add_value",slot:"mainhand"}],minecraft:max_stack_size=1]
+tellraw @s [{"text":"[MythGear] ","color":"gold"},{"text":"黄金の投げ縄『ソルレイド』","color":"light_purple"},{"text":" を入手しました。","color":"gray"}]

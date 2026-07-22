@@ -1,0 +1,3 @@
+# 緋薔薇の羽織『ロゼクロス』
+give @s minecraft:leather_chestplate[minecraft:item_name="緋薔薇の羽織『ロゼクロス』",minecraft:rarity="rare",minecraft:lore=["《八神装備・陸》","緋色の髪の武神がまとう白い羽織。","着る者の命を大きく護る。"],minecraft:item_model="mythgear:rose_robe",minecraft:equippable={slot:"chest",asset_id:"mythgear:rose_robe",equip_sound:"minecraft:item.armor.equip_leather"},minecraft:attribute_modifiers=[{id:"mythgear:rose_robe/armor",type:"minecraft:armor",amount:5,operation:"add_value",slot:"chest"},{id:"mythgear:rose_robe/health",type:"minecraft:max_health",amount:4,operation:"add_value",slot:"chest"}],minecraft:max_damage=384]
+tellraw @s [{"text":"[MythGear] ","color":"gold"},{"text":"緋薔薇の羽織『ロゼクロス』","color":"light_purple"},{"text":" を入手しました。","color":"gray"}]

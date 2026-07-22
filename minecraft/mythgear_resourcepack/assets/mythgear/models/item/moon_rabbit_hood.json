@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "mythgear:item/moon_rabbit_hood"
+  }
+}

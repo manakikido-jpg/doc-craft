@@ -1,0 +1,9 @@
+# 八神装備を一括入手
+function mythgear:give/demon_wings
+function mythgear:give/hero_greatsword
+function mythgear:give/moon_rabbit_hood
+function mythgear:give/golden_lasso
+function mythgear:give/moth_wings
+function mythgear:give/rose_robe
+function mythgear:give/sun_crown
+function mythgear:give/skull_staff

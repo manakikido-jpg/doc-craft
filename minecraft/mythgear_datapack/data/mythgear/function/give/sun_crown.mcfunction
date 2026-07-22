@@ -1,0 +1,3 @@
+# 太陽神の宝冠『ソルクラウン』
+give @s minecraft:golden_helmet[minecraft:item_name="太陽神の宝冠『ソルクラウン』",minecraft:rarity="epic",minecraft:lore=["《八神装備・漆》","太陽神の額に輝く黄金の冠。","身に着ける者に幸運を授ける。"],minecraft:item_model="mythgear:sun_crown",minecraft:equippable={slot:"head",asset_id:"mythgear:sun_crown",equip_sound:"minecraft:item.armor.equip_gold"},minecraft:attribute_modifiers=[{id:"mythgear:sun_crown/armor",type:"minecraft:armor",amount:3,operation:"add_value",slot:"head"},{id:"mythgear:sun_crown/luck",type:"minecraft:luck",amount:1,operation:"add_value",slot:"head"}],minecraft:enchantment_glint_override=true]
+tellraw @s [{"text":"[MythGear] ","color":"gold"},{"text":"太陽神の宝冠『ソルクラウン』","color":"light_purple"},{"text":" を入手しました。","color":"gray"}]

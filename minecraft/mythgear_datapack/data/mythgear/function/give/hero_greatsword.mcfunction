@@ -1,0 +1,3 @@
+# 覇王大剣『ドラグヴェイン』
+give @s minecraft:netherite_sword[minecraft:item_name="覇王大剣『ドラグヴェイン』",minecraft:rarity="epic",minecraft:lore=["《八神装備・弐》","竜殺しの伝説を宿す蒼き大剣。","一振りで戦局を変える。"],minecraft:item_model="mythgear:hero_greatsword",minecraft:attribute_modifiers=[{id:"minecraft:base_attack_damage",type:"minecraft:attack_damage",amount:11,operation:"add_value",slot:"mainhand"},{id:"minecraft:base_attack_speed",type:"minecraft:attack_speed",amount:-2.9,operation:"add_value",slot:"mainhand"}],minecraft:enchantment_glint_override=true]
+tellraw @s [{"text":"[MythGear] ","color":"gold"},{"text":"覇王大剣『ドラグヴェイン』","color":"light_purple"},{"text":" を入手しました。","color":"gray"}]
